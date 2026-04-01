@@ -18,7 +18,7 @@ const http    = require('http');
 const { exec, execSync } = require('child_process');
 
 // ▼ GAS デプロイURL（Webアプリとして公開した際のURL）
-const GAS_URL = 'YOUR_GAS_WEB_APP_URL';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzn-2grPqgOAoEQ29NCwTOewDZ8v5u8mQeeQ4jKJsHQz3TZFJ_g5Pe0cSdgx1PD2FFW/exec';
 
 // =====================================================
 // 状態管理

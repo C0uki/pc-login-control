@@ -3,7 +3,7 @@
 // =====================================================
 
 // ▼ 必ずご自身の値に書き換えてください
-const SPREADSHEET_ID    = 'YOUR_SPREADSHEET_ID';           // スプレッドシートのID
+const SPREADSHEET_ID    = '1aXZoeqpa7nSk0GILty09AEVr5q_uvD4kZJMBEl7smys // スプレッドシートのID
 const MASTER_PASS_HASH  = 'YOUR_MASTER_PASSWORD_SHA256';   // マスターPWのSHA-256ハッシュ
 const USER_SHEET_NAME   = 'ユーザーマスター';
 const LOG_SHEET_NAME    = '利用ログ';
