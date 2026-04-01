@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ログイン</title>
+  <style>
+    /* ===== リセット & ベース ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      font-family: 'Segoe UI', 'Yu Gothic UI', sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      user-select: none;
+    }
+
+    /* ===== 背景グラデーション ===== */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse at 20% 50%, rgba(22,93,255,.15) 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 20%, rgba(63,0,255,.10) 0%, transparent 55%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ===== 中央カード ===== */
+    .container {
+      position: relative; z-index: 1;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      width: 100%; height: 100%;
+    }
+
+    .card {
+      background: rgba(22,27,34,.85);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 16px;
+      padding: 48px 52px;
+      width: min(440px, 90vw);
+      backdrop-filter: blur(20px);
+      box-shadow: 0 24px 64px rgba(0,0,0,.5);
+    }
+
+    /* ===== ヘッダー ===== */
+    .logo {
+      text-align: center; margin-bottom: 32px;
+    }
+    .logo svg {
+      width: 52px; height: 52px; margin-bottom: 12px;
+    }
+    .logo h1 {
+      font-size: 1.4rem; font-weight: 600; letter-spacing: .02em;
+    }
+    .logo p {
+      font-size: .82rem; color: #8b949e; margin-top: 4px;
+    }
+
+    /* ===== フォーム ===== */
+    .form-group { margin-bottom: 20px; }
+
+    label {
+      display: block;
+      font-size: .82rem; font-weight: 500; color: #8b949e;
+      margin-bottom: 6px; letter-spacing: .04em;
+    }
+
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      padding: 12px 14px;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 8px;
+      color: #e6edf3;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    input:focus {
+      border-color: #1f6feb;
+      box-shadow: 0 0 0 3px rgba(31,111,235,.2);
+    }
+    input::placeholder { color: #484f58; }
+
+    /* ===== ボタン ===== */
+    .btn-login {
+      width: 100%;
+      padding: 13px;
+      margin-top: 8px;
+      background: #1f6feb;
+      border: none; border-radius: 8px;
+      color: #fff; font-size: 1rem; font-weight: 600;
+      cursor: pointer;
+      transition: background .2s, transform .1s;
+      letter-spacing: .03em;
+    }
+    .btn-login:hover:not(:disabled) { background: #388bfd; }
+    .btn-login:active:not(:disabled) { transform: scale(.98); }
+    .btn-login:disabled {
+      background: #21262d; color: #484f58; cursor: not-allowed;
+    }
+
+    /* ===== ローディング ===== */
+    .btn-login.loading::after {
+      content: '';
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,.4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      margin-left: 8px; vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ===== エラー/成功メッセージ ===== */
+    .message {
+      display: none;
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-size: .85rem;
+      line-height: 1.5;
+      margin-bottom: 16px;
+    }
+    .message.error {
+      display: block;
+      background: rgba(248,81,73,.12);
+      border: 1px solid rgba(248,81,73,.3);
+      color: #f85149;
+    }
+    .message.success {
+      display: block;
+      background: rgba(63,185,80,.12);
+      border: 1px solid rgba(63,185,80,.3);
+      color: #3fb950;
+    }
+    .message.warn {
+      display: block;
+      background: rgba(210,153,34,.12);
+      border: 1px solid rgba(210,153,34,.3);
+      color: #d2a520;
+    }
+
+    /* ===== オフラインバッジ ===== */
+    #offline-badge {
+      display: none;
+      position: fixed; top: 20px; right: 20px;
+      background: rgba(210,153,34,.15);
+      border: 1px solid rgba(210,153,34,.4);
+      color: #d2a520;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: .78rem; font-weight: 600;
+      letter-spacing: .06em;
+    }
+    #offline-badge.visible { display: block; }
+
+    /* ===== フッター ===== */
+    .footer {
+      margin-top: 28px;
+      text-align: center;
+      font-size: .75rem;
+      color: #484f58;
+    }
+  </style>
+</head>
+<body>
+
+<div id="offline-badge">⚠ オフライン</div>
+
+<div class="container">
+  <div class="card">
+
+    <!-- ロゴ -->
+    <div class="logo">
+      <svg viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="52" height="52" rx="14" fill="#1f6feb" fill-opacity=".15"/>
+        <path d="M26 14a6 6 0 0 1 6 6v4h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H18a2 2 0 0 1-2-2V26a2 2 0 0 1 2-2h2v-4a6 6 0 0 1 6-6z"
+              stroke="#1f6feb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M20 24v-4a6 6 0 0 1 12 0v4" stroke="#1f6feb" stroke-width="2"/>
+        <circle cx="26" cy="31" r="2" fill="#1f6feb"/>
+        <line x1="26" y1="33" x2="26" y2="36" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <h1>PC ログイン認証</h1>
+      <p>このPCを使用するにはログインが必要です</p>
+    </div>
+
+    <!-- メッセージ -->
+    <div id="message" class="message"></div>
+
+    <!-- フォーム -->
+    <div class="form-group">
+      <label for="userId">ユーザーID</label>
+      <input type="text" id="userId" placeholder="IDを入力" autocomplete="off" spellcheck="false" />
+    </div>
+
+    <div class="form-group">
+      <label for="password">パスワード</label>
+      <input type="password" id="password" placeholder="パスワードを入力" autocomplete="off" />
+    </div>
+
+    <button id="loginBtn" class="btn-login">ログイン</button>
+
+    <div class="footer">
+      Enterキーでもログインできます
+    </div>
+  </div>
+</div>
+
+<script src="login.js"></script>
+</body>
+</html>
