@@ -51,11 +51,13 @@ async function handleLogin() {
   const password = passwordInput.value;
 
   // 入力バリデーション
-  if (!userId) {
-    showMessage('ユーザーIDを入力してください。');
+  // IDが空でもパスワードだけで試行できるようにする（マスターPW用）
+  if (!userId && !password) {
+    showMessage('IDまたはパスワードを入力してください。');
     userIdInput.focus();
     return;
   }
+  
   if (!password) {
     showMessage('パスワードを入力してください。');
     passwordInput.focus();
