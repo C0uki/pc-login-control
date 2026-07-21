@@ -149,6 +149,42 @@ summary { cursor: pointer; color: var(--primary); font-size: 0.85rem; }
 
 .foot { text-align: center; color: var(--placeholder); font-size: 0.78rem; margin-top: 30px; }
 
+/* ---- マルチテナント: 導入者向け ---- */
+.lead { color: var(--sub); font-size: 0.95rem; margin: 4px 0 18px; }
+.lead b { color: var(--text); }
+
+.org-result {
+  margin-top: 16px; padding: 14px; border-radius: 10px;
+  background: rgba(63, 185, 80, 0.1); border: 1px solid rgba(63, 185, 80, 0.35);
+}
+.org-result-head { color: var(--ok); font-weight: 600; font-size: 0.9rem; margin-bottom: 10px; }
+
+.org-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px 18px; margin-bottom: 18px;
+}
+.org-bar-name { font-size: 1.05rem; font-weight: 700; }
+.org-bar-id { font-size: 0.8rem; color: var(--sub); margin-top: 3px; }
+.org-bar-id code { background: var(--input-bg); padding: 1px 6px; border-radius: 5px; color: var(--text); font-size: 0.9em; }
+
+.link-btn {
+  background: none; border: none; color: var(--primary); cursor: pointer;
+  font-size: 0.78rem; font-weight: 600; padding: 0 0 0 6px;
+}
+.link-btn:hover { text-decoration: underline; }
+
+/* ---- オーナー向け折りたたみ ---- */
+details.owner {
+  margin-top: 30px; border-top: 1px solid var(--border); padding-top: 18px;
+}
+details.owner > summary {
+  cursor: pointer; color: var(--sub); font-size: 0.85rem; font-weight: 600;
+  list-style: none; margin-bottom: 12px;
+}
+details.owner > summary::before { content: '▸ '; }
+details.owner[open] > summary::before { content: '▾ '; }
+
 @media (max-width: 560px) {
   .health-grid { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }

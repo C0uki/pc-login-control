@@ -4,7 +4,7 @@
 //   バックエンド移行後も API_URL を差し替えるだけで動作する。
 // =====================================================
 
-import { API_URL, REQUEST_TIMEOUT_MS, ONLINE_CHECK_URL } from './config';
+import { API_URL, ORG_ID, REQUEST_TIMEOUT_MS, ONLINE_CHECK_URL } from './config';
 import { hashPassword } from './crypto';
 import type {
   LoginResult,
@@ -15,7 +15,21 @@ import type {
   RespondRequestResult,
   GetLogsResult,
   RegisterResult,
+  CreateOrgResult,
 } from './types';
+
+// 現在の組織ID（config の ORG_ID を既定値とし、実行時に上書き可能）
+let currentOrgId = ORG_ID;
+
+/** 組織IDを設定（初回起動時に組織コードを入力させる等） */
+export function setOrgId(orgId: string): void {
+  currentOrgId = orgId;
+}
+
+/** 現在の組織IDを取得 */
+export function getOrgId(): string {
+  return currentOrgId;
+}
 
 async function postToApi<T extends BaseResult>(
   payload: Record<string, unknown>,
@@ -23,10 +37,12 @@ async function postToApi<T extends BaseResult>(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
+    // すべてのリクエストに組織IDを付与（payload 側で明示された場合はそちらを優先）
+    const body = { orgId: currentOrgId, ...payload };
     const res = await fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
     const text = await res.text();
@@ -43,6 +59,22 @@ async function postToApi<T extends BaseResult>(
   } finally {
     clearTimeout(timer);
   }
+}
+
+// ------- 組織（セルフサービス登録） -------
+
+/** 組織を作成して組織IDを取得（導入者/管理者向け） */
+export function createOrg(
+  orgName: string,
+  masterPassword: string,
+  signupCode?: string,
+): Promise<CreateOrgResult> {
+  return postToApi<CreateOrgResult>({
+    action: 'createOrg',
+    orgName,
+    masterPasswordHash: hashPassword(masterPassword),
+    signupCode,
+  });
 }
 
 // ------- 認証 -------

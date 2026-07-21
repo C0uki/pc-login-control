@@ -43,16 +43,19 @@ cd react-native
 npm install          # workspaces 一括インストール
 ```
 
-## 2. バックエンド URL の設定
+## 2. バックエンド URL と組織IDの設定
 
-`packages/core/src/config.ts` の `GAS_URL` を、デプロイした GAS の URL に変更します。
+`packages/core/src/config.ts` を設定します。
 
 ```ts
-export const GAS_URL = 'https://script.google.com/macros/s/XXXX/exec';
+export const API_URL = 'https://<owner-app>.vercel.app/api'; // オーナー共通の固定URL
+export const ORG_ID  = 'あなたの組織ID';                      // 管理コンソールの「組織を作成」で取得
 ```
 
-（GAS 側のセットアップは [`../README.md`](../README.md) の STEP 1〜3 を参照。
-`Code.gs` は本 README の承認フロー用エンドポイントを追加済みです。）
+- `API_URL` はオーナーが運用する Vercel API（全組織共通）。
+- `ORG_ID` は導入者ごとの組織ID。`setOrgId()` で実行時に上書きも可能です。
+
+（バックエンド／管理コンソールのセットアップは [`../server/README.md`](../server/README.md) を参照。）
 
 型チェックだけ先に確認する場合:
 

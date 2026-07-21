@@ -14,6 +14,12 @@ export interface ApiResult {
 /** POST ボディ（クライアントからのリクエスト） */
 export interface RequestData {
   action?: string;
+  // マルチテナント（組織スコープ）
+  orgId?: string;
+  // createOrg（組織のセルフサービス登録）
+  orgName?: string;
+  masterPasswordHash?: string;
+  signupCode?: string;
   userId?: string;
   userName?: string;
   passwordHash?: string;
