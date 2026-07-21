@@ -1,0 +1,31 @@
+{
+  "name": "pc-windows",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PC Login Control — React Native for Windows キオスク・ログインクライアント",
+  "scripts": {
+    "start": "react-native start",
+    "windows": "react-native run-windows",
+    "windows:release": "react-native run-windows --release --arch x64",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pclc/core": "*",
+    "@react-native-async-storage/async-storage": "^2.1.0",
+    "react": "18.3.1",
+    "react-native": "0.76.5",
+    "react-native-windows": "^0.76.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.0",
+    "@babel/preset-env": "^7.25.0",
+    "@babel/runtime": "^7.25.0",
+    "@react-native/babel-preset": "0.76.5",
+    "@react-native/metro-config": "0.76.5",
+    "@react-native/typescript-config": "0.76.5",
+    "@types/jest": "^29.5.0",
+    "@types/react": "^18.3.0",
+    "typescript": "^5.3.0"
+  }
+}

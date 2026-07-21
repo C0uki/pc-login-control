@@ -1,0 +1,9 @@
+{
+  "extends": "@react-native/typescript-config",
+  "compilerOptions": {
+    "paths": {
+      "@pclc/core": ["../packages/core/src"]
+    }
+  },
+  "include": ["src", "index.js"]
+}

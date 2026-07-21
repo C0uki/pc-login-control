@@ -1,19 +1,26 @@
 # PC Login Control System — セットアップ手順
 
+> **React Native 版に再構築しました。** PC クライアントは React Native for Windows、
+> 加えてスマホから PC ログインを承認できるモバイルアプリを追加しています。
+> セットアップは [`react-native/README.md`](react-native/README.md) を参照してください。
+> 旧 Electron 版は [`electron/`](electron/) に参照用として残しています。
+
 ## 構成概要
 
 ```
-┌─────────────────────┐        HTTPS POST         ┌──────────────────────┐
-│  Electron App (PC)  │ ─────────────────────────▶ │  Google Apps Script  │
-│  ・全画面キオスク   │                             │  (Web API)           │
-│  ・ショートカット   │ ◀─ JSON { success, ... } ─  │                      │
-│    ブロック         │                             └──────────┬───────────┘
-└─────────────────────┘                                        │ 読み書き
-                                                    ┌──────────▼───────────┐
-                                                    │  Google Spreadsheet  │
-                                                    │  ・ユーザーマスター  │
-                                                    │  ・利用ログ          │
-                                                    └──────────────────────┘
+┌──────────────────────────┐   requestApproval /     ┌──────────────────────┐
+│  pc-windows (Windows PC) │   checkApproval /login   │  Google Apps Script  │
+│  React Native for Windows│ ───────────────────────▶ │  (Web API)           │
+│  ・キオスクログイン      │ ◀── JSON { success,... } ─│                      │
+│  ・ショートカット遮断    │                          └──────────┬───────────┘
+└──────────────────────────┘                                     │ 読み書き
+                                                      ┌──────────▼───────────┐
+┌──────────────────────────┐   listRequests /         │  Google Spreadsheet  │
+│  mobile (iOS / Android)  │   respondRequest /getLogs │  ・ユーザーマスター  │
+│  React Native            │ ───────────────────────▶ │  ・利用ログ          │
+│  ・PCログインを承認      │ ◀───────────────────────  │  ・認証リクエスト    │
+│  ・利用ログ閲覧          │                          └──────────────────────┘
+└──────────────────────────┘
 ```
 
 ---
@@ -60,42 +67,50 @@
 
 ---
 
-## STEP 4: Electron アプリの設定
+## STEP 4: React Native アプリの設定
 
-1. `electron/main.js` の `GAS_URL` に STEP 2 でコピーした URL を貼り付け
+PC クライアント（Windows）とモバイルアプリ（iOS / Android）のセットアップ手順は
+[`react-native/README.md`](react-native/README.md) にまとめています。要点のみ:
 
-   ```js
-   const GAS_URL = 'https://script.google.com/macros/s/YOUR_ID/exec';
-   ```
-
-2. 依存パッケージのインストール
+1. 依存インストール
 
    ```bash
-   cd electron
+   cd react-native
    npm install
    ```
 
-3. 動作確認（開発起動）
+2. `react-native/packages/core/src/config.ts` の `GAS_URL` に STEP 2 の URL を貼り付け
 
-   ```bash
-   npm start
+   ```ts
+   export const GAS_URL = 'https://script.google.com/macros/s/YOUR_ID/exec';
    ```
 
-4. **Windows 用インストーラーのビルド**
+3. PC（Windows）クライアント
 
    ```bash
-   npm run build
+   cd pc-windows
+   npx react-native-windows-init --overwrite --language cs   # 初回のみ
+   npm run windows
    ```
-   
-   `dist/` フォルダに `.exe` インストーラーが生成されます。
+
+4. モバイルアプリ
+
+   ```bash
+   cd mobile
+   npm run android   # または npm run ios（macOS）
+   ```
 
 ---
 
-## STEP 5: PC へのインストール
+## STEP 5: 運用フロー
 
-1. ビルドした `.exe` を対象 PC で **管理者として実行**
-2. インストール完了後、自動的にスタートアップ登録されます
-3. 次回 PC 起動時から認証画面が表示されます
+- **直接ログイン**: PC で ID + パスワードを入力してログイン（従来どおり）
+- **スマホ承認**: PC で ID を入力 →「スマホで承認する」→ モバイルアプリで承認 → PC ログイン
+- ログイン / ログアウトは「利用ログ」に記録され、モバイルアプリで閲覧可能
+
+> PC の全画面キオスク化・スタートアップ登録・タスクマネージャー無効化は
+> ネイティブモジュール（`react-native/pc-windows/windows-native/KioskModule.cs`）が担当します。
+> 詳細と制限事項は同フォルダの README を参照してください。
 
 ---
 
@@ -116,12 +131,15 @@
 pc-login-control/
 ├── README.md
 ├── gas/
-│   └── Code.gs          ← Google Apps Script（バックエンド）
-└── electron/
-    ├── package.json
-    ├── main.js           ← メインプロセス（ウィンドウ制御）
-    ├── preload.js        ← セキュアな API ブリッジ
-    └── renderer/
-        ├── index.html    ← ログイン画面
-        └── login.js      ← ログイン画面のロジック
+│   └── Code.gs               ← Google Apps Script（バックエンド / 承認フロー対応）
+├── react-native/             ← ★ React Native 版（現行）
+│   ├── README.md             ← セットアップ手順
+│   ├── packages/core/        ← 共通TS（API / crypto / types）
+│   ├── pc-windows/           ← RN for Windows（キオスクログイン）
+│   │   └── windows-native/   ← C# ネイティブモジュール（キオスク制御）
+│   └── mobile/               ← RN モバイル（承認 / ログ閲覧）
+└── electron/                 ← 旧 Electron 版（参照用）
+    ├── main.js
+    ├── preload.js
+    └── renderer/{index.html,login.js}
 ```
