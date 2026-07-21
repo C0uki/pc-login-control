@@ -1,69 +1,71 @@
 # PC Login Control System — セットアップ手順
 
-> **React Native 版に再構築しました。** PC クライアントは React Native for Windows、
-> 加えてスマホから PC ログインを承認できるモバイルアプリを追加しています。
-> セットアップは [`react-native/README.md`](react-native/README.md) を参照してください。
-> 旧 Electron 版は [`electron/`](electron/) に参照用として残しています。
+> **React Native + Supabase/Vercel 構成に再構築しました。**
+> クライアントは React Native for Windows（PC キオスク）とモバイル承認アプリ、
+> バックエンドは **Supabase（PostgreSQL）+ Vercel（サーバーレスAPI）** です。
+> - クライアント: [`react-native/README.md`](react-native/README.md)
+> - バックエンド: [`server/README.md`](server/README.md) / [`supabase/README.md`](supabase/README.md)
+> - 旧 Electron 版は [`electron/`](electron/)、旧 GAS 版は [`gas/`](gas/) に参照用として残しています。
 
 ## 構成概要
 
 ```
-┌──────────────────────────┐   requestApproval /     ┌──────────────────────┐
-│  pc-windows (Windows PC) │   checkApproval /login   │  Google Apps Script  │
-│  React Native for Windows│ ───────────────────────▶ │  (Web API)           │
-│  ・キオスクログイン      │ ◀── JSON { success,... } ─│                      │
-│  ・ショートカット遮断    │                          └──────────┬───────────┘
-└──────────────────────────┘                                     │ 読み書き
-                                                      ┌──────────▼───────────┐
-┌──────────────────────────┐   listRequests /         │  Google Spreadsheet  │
-│  mobile (iOS / Android)  │   respondRequest /getLogs │  ・ユーザーマスター  │
-│  React Native            │ ───────────────────────▶ │  ・利用ログ          │
-│  ・PCログインを承認      │ ◀───────────────────────  │  ・認証リクエスト    │
-│  ・利用ログ閲覧          │                          └──────────────────────┘
+┌──────────────────────────┐   requestApproval /      ┌──────────────────────┐
+│  pc-windows (Windows PC) │   checkApproval / login   │  Vercel              │
+│  React Native for Windows│ ────────POST /api───────▶ │  サーバーレスAPI     │
+│  ・キオスクログイン      │ ◀── JSON { success,... } ─│  (TypeScript)        │
+│  ・ショートカット遮断    │                           └──────────┬───────────┘
+└──────────────────────────┘                                      │ service_role
+                                                       ┌──────────▼───────────┐
+┌──────────────────────────┐   listRequests /          │  Supabase (Postgres) │
+│  mobile (iOS / Android)  │   respondRequest / getLogs │  ・users             │
+│  React Native            │ ────────POST /api───────▶ │  ・logs              │
+│  ・PCログインを承認      │ ◀───────────────────────  │  ・approval_requests │
+│  ・利用ログ閲覧          │                           └──────────────────────┘
 └──────────────────────────┘
 ```
 
 ---
 
-## STEP 1: Google スプレッドシートの準備
+## STEP 1: Supabase（データベース）
 
-1. Google スプレッドシートを新規作成
-2. URLから **スプレッドシートID** をコピー
-   - 例: `https://docs.google.com/spreadsheets/d/【ここがID】/edit`
-3. `gas/Code.gs` の `SPREADSHEET_ID` に貼り付け
+1. [Supabase](https://supabase.com/) で新規プロジェクトを作成
+2. 「SQL Editor」で [`supabase/schema.sql`](supabase/schema.sql) を実行
+   （`users` / `logs` / `approval_requests` を作成）
+3. 「Project Settings → API」から **Project URL** と **service_role キー** を控える
 
----
-
-## STEP 2: Google Apps Script の設定
-
-1. スプレッドシートの「拡張機能」→「Apps Script」を開く
-2. `gas/Code.gs` の内容を貼り付けて保存
-3. **初期セットアップ実行**
-   - 関数 `setupSpreadsheet` を選択して実行（シートを自動作成）
-4. **マスターパスワードの設定**
-   - 任意のマスターパスワードの SHA-256 ハッシュを取得
-   - PowerShell: `(Get-FileHash -Algorithm SHA256 -InputStream ([IO.MemoryStream]::new([Text.Encoding]::UTF8.GetBytes("あなたのPW")))).Hash.ToLower()`
-   - 取得したハッシュを `MASTER_PASS_HASH` に設定
-5. **Webアプリとしてデプロイ**
-   - 「デプロイ」→「新しいデプロイ」→「Webアプリ」
-   - 実行ユーザー: **自分**
-   - アクセスできるユーザー: **全員**（認証はアプリ側で行います）
-   - デプロイして **URL** をコピー
+詳細: [`supabase/README.md`](supabase/README.md)
 
 ---
 
-## STEP 3: Google フォームの設定（ユーザー登録用）
+## STEP 2: Vercel（サーバーレスAPI）
 
-1. Google フォームを新規作成（3つの質問を追加）
-   - 「ユーザーID」（記述式・短答）
-   - 「ユーザー名」（記述式・短答）
-   - 「パスワード」（記述式・短答）
-2. フォームの回答先スプレッドシートを **STEP 1 のスプレッドシート** に設定
-3. Apps Script で `onFormSubmit` トリガーを設定
-   - 「トリガー」→「＋トリガーを追加」
-   - 関数: `onFormSubmit`
-   - イベントのソース: **スプレッドシートから**
-   - イベントの種類: **フォーム送信時**
+```bash
+cd server
+npm install
+npx vercel                       # プロジェクトをリンク
+npx vercel env add SUPABASE_URL
+npx vercel env add SUPABASE_SERVICE_ROLE_KEY
+npx vercel env add MASTER_PASS_HASH   # マスターPWの SHA-256
+npx vercel deploy --prod
+```
+
+デプロイ後の `https://<app>.vercel.app/api` が API エンドポイントです。
+マスターPWのハッシュは `printf '%s' 'あなたのPW' | sha256sum` で取得できます。
+
+詳細: [`server/README.md`](server/README.md)
+
+---
+
+## STEP 3: ユーザー登録
+
+GAS 版の Google フォームは廃止し、**マスター権限の `register` API** に置き換えました。
+API 経由（`@pclc/core` の `register()` / curl）か、Supabase の Table Editor で
+`users` に追加します（`hashed_password` は平文PWの SHA-256）。手順は
+[`server/README.md`](server/README.md#ユーザー登録google-フォームの置き換え) を参照。
+
+既存スプレッドシートからの移行手順も同 README に記載しています
+（ハッシュ方式は同一のため既存パスワードはそのまま利用可能）。
 
 ---
 
@@ -79,10 +81,10 @@ PC クライアント（Windows）とモバイルアプリ（iOS / Android）の
    npm install
    ```
 
-2. `react-native/packages/core/src/config.ts` の `GAS_URL` に STEP 2 の URL を貼り付け
+2. `react-native/packages/core/src/config.ts` の `API_URL` に STEP 2 の URL を貼り付け
 
    ```ts
-   export const GAS_URL = 'https://script.google.com/macros/s/YOUR_ID/exec';
+   export const API_URL = 'https://your-app.vercel.app/api';
    ```
 
 3. PC（Windows）クライアント
@@ -130,14 +132,21 @@ PC クライアント（Windows）とモバイルアプリ（iOS / Android）の
 ```
 pc-login-control/
 ├── README.md
-├── gas/
-│   └── Code.gs               ← Google Apps Script（バックエンド / 承認フロー対応）
-├── react-native/             ← ★ React Native 版（現行）
-│   ├── README.md             ← セットアップ手順
+├── supabase/                 ← ★ データベース（PostgreSQL）
+│   ├── schema.sql            ← テーブル / RLS 定義
+│   └── README.md
+├── server/                   ← ★ Vercel サーバーレスAPI（現行バックエンド）
+│   ├── api/index.ts          ← エンドポイント（POST /api）
+│   ├── lib/{handlers,auth,supabase,types}.ts
+│   └── README.md             ← Supabase + Vercel セットアップ
+├── react-native/             ← ★ React Native 版（クライアント）
+│   ├── README.md
 │   ├── packages/core/        ← 共通TS（API / crypto / types）
 │   ├── pc-windows/           ← RN for Windows（キオスクログイン）
 │   │   └── windows-native/   ← C# ネイティブモジュール（キオスク制御）
 │   └── mobile/               ← RN モバイル（承認 / ログ閲覧）
+├── gas/                      ← 旧 Google Apps Script 版（参照用）
+│   └── Code.gs
 └── electron/                 ← 旧 Electron 版（参照用）
     ├── main.js
     ├── preload.js

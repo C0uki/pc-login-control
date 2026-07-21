@@ -1,13 +1,13 @@
 // =====================================================
 // 共通設定
-//   GAS_URL は「Webアプリとしてデプロイ」した際のURLに書き換えてください。
-//   （gas/Code.gs をデプロイして取得）
+//   API_URL は Vercel にデプロイした API のURLに書き換えてください。
+//   （server/ を `vercel deploy` して取得。末尾は /api）
+//   例: https://your-app.vercel.app/api
 // =====================================================
 
-export const GAS_URL =
-  'https://script.google.com/macros/s/AKfycbzn-2grPqgOAoEQ29NCwTOewDZ8v5u8mQeeQ4jKJsHQz3TZFJ_g5Pe0cSdgx1PD2FFW/exec';
+export const API_URL = 'https://your-app.vercel.app/api';
 
-/** GAS へのリクエストタイムアウト(ms) */
+/** API へのリクエストタイムアウト(ms) */
 export const REQUEST_TIMEOUT_MS = 10_000;
 
 /** モバイル承認のポーリング間隔(ms) */

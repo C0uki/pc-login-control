@@ -14,5 +14,6 @@ export {
   listRequests,
   respondRequest,
   getLogs,
+  register,
   checkOnline,
 } from './api';
