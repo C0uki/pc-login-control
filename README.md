@@ -32,6 +32,9 @@
 
 詳細は [`server/README.md`](server/README.md) を参照してください。
 
+**はじめて導入する方へ** — 手順書とチェックリストを用意しています:
+[① バックエンド接続](docs/01-backend-setup.md) → [② アプリのビルド](docs/02-build-clients.md) → [③ 導入チェックリスト](docs/03-checklist.md)（[ガイド目次](docs/README.md)）
+
 ## 構成概要
 
 ```
