@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2019",
+    "module": "ES2015",
+    "lib": ["ES2019", "DOM"],
+    "strict": true,
+    "skipLibCheck": true,
+    "removeComments": false,
+    "types": [],
+    "noEmitOnError": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["console/**/*.ts"]
+}

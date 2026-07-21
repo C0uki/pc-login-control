@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vercel dev",
     "deploy": "vercel deploy --prod",
-    "typecheck": "tsc --noEmit"
+    "build:console": "tsc -p tsconfig.console.json",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.console.json --noEmit"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0"

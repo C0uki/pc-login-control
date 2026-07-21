@@ -1,12 +1,31 @@
-// =====================================================
-// PC Login Control — 管理コンソール（Web GUI・マルチテナント）
-//   導入者は「組織を作成」→ 組織ID を取得 → 自組織のユーザー/ログ/承認を管理。
-//   Supabase / Vercel の操作は不要（オーナーの初回セットアップのみ）。
-// =====================================================
-'use strict';
+/*
+ * NOTE: 生成物 server/app.js は本ファイルから `npm run build:console` で生成されます。
+ *       編集はこの .ts 側で行ってください（.js を直接編集しないこと）。
+ *
+ * PC Login Control — 管理コンソール（Web GUI・マルチテナント）
+ *   導入者は「組織を作成」→ 組織ID を取得 → 自組織のユーザー/ログ/承認を管理。
+ *   Supabase / Vercel の操作は不要（オーナーの初回セットアップのみ）。
+ */
+
+// ---------- 型 ----------
+interface BaseResult { success: boolean; message: string; }
+interface HealthResult extends BaseResult {
+  envConfigured?: boolean; tablesReady?: boolean; signupCodeRequired?: boolean; dbError?: string;
+}
+interface CreateOrgResult extends BaseResult { orgId?: string; orgName?: string; }
+interface LoginResult extends BaseResult { orgId?: string; orgName?: string; userId?: string; userName?: string; }
+interface UserRow { userId: string; userName: string; createdAt: string; }
+interface ListUsersResult extends BaseResult { users?: UserRow[]; }
+interface LogRow { timestamp: string; userId: string; userName: string; action: string; }
+interface GetLogsResult extends BaseResult { logs?: LogRow[]; }
+interface ApprovalRow { requestId: string; userId: string; userName: string; deviceName: string; createdAt: string; }
+interface ListRequestsResult extends BaseResult { requests?: ApprovalRow[]; }
+interface Session { orgId: string; orgName: string; passwordHash: string; }
+
+type TabName = 'users' | 'logs' | 'approvals';
 
 // supabase/schema.sql と同一（オーナーのDB初期化ガイド表示用）
-var SCHEMA_SQL = [
+const SCHEMA_SQL: string = [
   '-- PC Login Control — Supabase スキーマ（マルチテナント）',
   'create table if not exists public.organizations (',
   '  org_id           uuid primary key default gen_random_uuid(),',
@@ -55,117 +74,121 @@ var SCHEMA_SQL = [
 ].join('\n');
 
 // ---------- 状態 ----------
-var session = null; // { orgId, orgName, passwordHash }
+let session: Session | null = null;
 
-function $(id) { return document.getElementById(id); }
+// ---------- DOM ヘルパー ----------
+function $<T extends HTMLElement = HTMLElement>(id: string): T {
+  return document.getElementById(id) as T;
+}
+function inp(id: string): HTMLInputElement { return $(id) as HTMLInputElement; }
 
-function getApiBase() {
-  var saved = localStorage.getItem('pclc.apiBase');
+function getApiBase(): string {
+  const saved = localStorage.getItem('pclc.apiBase');
   if (saved) return saved;
   return (location.origin && location.origin !== 'null') ? location.origin + '/api' : '/api';
 }
 
-async function api(payload) {
-  var res = await fetch(getApiBase(), {
+async function api<T extends BaseResult = BaseResult>(payload: Record<string, unknown>): Promise<T> {
+  const res = await fetch(getApiBase(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  var text = await res.text();
-  try { return JSON.parse(text); }
+  const text = await res.text();
+  try { return JSON.parse(text) as T; }
   catch (e) { throw new Error('レスポンス解析に失敗: ' + text.slice(0, 160)); }
 }
 
 // 組織スコープ + マスター資格でのAPI呼び出し
-function authCall(action, extra) {
+function authCall<T extends BaseResult = BaseResult>(action: string, extra?: Record<string, unknown>): Promise<T> {
   if (!session) return Promise.reject(new Error('未ログインです'));
-  return api(Object.assign({
-    action: action, orgId: session.orgId, userId: 'MASTER', passwordHash: session.passwordHash,
-  }, extra || {}));
+  return api<T>(Object.assign(
+    { action, orgId: session.orgId, userId: 'MASTER', passwordHash: session.passwordHash },
+    extra || {},
+  ));
 }
 
-function esc(s) {
-  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-  });
+function esc(s: unknown): string {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>
+  )[c]);
 }
-function fmtTime(iso) {
-  var d = new Date(iso);
+function fmtTime(iso: string): string {
+  const d = new Date(iso);
   if (isNaN(d.getTime())) return esc(iso);
   return d.toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
-function showMsg(el, text, kind) {
+function showMsg(el: HTMLElement, text: string, kind?: string): void {
   el.textContent = text; el.className = 'msg ' + (kind || ''); el.classList.remove('hidden');
 }
 
 // ---------- 導入状態（オーナー向け） ----------
-function setDot(id, state) { $(id).className = 'dot' + (state ? ' ' + state : ''); }
-async function refreshHealth() {
+function setDot(id: string, state: string): void { $(id).className = 'dot' + (state ? ' ' + state : ''); }
+async function refreshHealth(): Promise<void> {
   $('healthMsg').textContent = '確認中…';
   try {
-    var r = await api({ action: 'health' });
+    const r = await api<HealthResult>({ action: 'health' });
     setDot('dotApi', 'ok');
     setDot('dotEnv', r.envConfigured ? 'ok' : 'bad');
     setDot('dotTables', r.tablesReady ? 'ok' : (r.envConfigured ? 'warn' : 'bad'));
     if (r.signupCodeRequired) $('signupCodeRow').classList.remove('hidden');
-    var notes = [];
+    const notes: string[] = [];
     if (!r.envConfigured) notes.push('環境変数 SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY を設定してください。');
     if (r.envConfigured && !r.tablesReady) notes.push('DBテーブルが未作成です（スキーマSQLを実行）。');
     if (r.dbError) notes.push('DB: ' + r.dbError);
     $('healthMsg').textContent = notes.length ? notes.join(' ') : 'すべて正常です。';
   } catch (e) {
     setDot('dotApi', 'bad'); setDot('dotEnv', ''); setDot('dotTables', '');
-    $('healthMsg').textContent = 'API に接続できません（' + e.message + '）。⚙️ で URL を確認してください。';
+    $('healthMsg').textContent = 'API に接続できません（' + errMsg(e) + '）。⚙️ で URL を確認してください。';
   }
 }
 
 // ---------- 組織を作成 ----------
-async function createOrg() {
-  var name = $('orgName').value.trim();
-  var pw = $('signupMasterPw').value;
-  var code = $('signupCode').value.trim();
-  var err = $('signupError'); err.classList.add('hidden');
+async function createOrg(): Promise<void> {
+  const name = inp('orgName').value.trim();
+  const pw = inp('signupMasterPw').value;
+  const code = inp('signupCode').value.trim();
+  const err = $('signupError'); err.classList.add('hidden');
   if (!name) { showMsg(err, '組織名を入力してください。', 'error'); return; }
   if (!pw) { showMsg(err, '管理者パスワードを入力してください。', 'error'); return; }
 
-  $('createOrgBtn').disabled = true;
+  (inp('createOrgBtn') as unknown as HTMLButtonElement).disabled = true;
   try {
-    var payload = { action: 'createOrg', orgName: name, masterPasswordHash: sha256(pw) };
+    const payload: Record<string, unknown> = { action: 'createOrg', orgName: name, masterPasswordHash: sha256(pw) };
     if (code) payload.signupCode = code;
-    var r = await api(payload);
+    const r = await api<CreateOrgResult>(payload);
     if (r.success && r.orgId) {
       $('orgIdValue').textContent = r.orgId;
       $('orgResult').classList.remove('hidden');
-      // ログインフォームに引き継ぎ
-      $('orgIdInput').value = r.orgId;
-      $('loginMasterPw').value = pw;
-      $('signupMasterPw').value = '';
-      $('loginMasterPw').focus();
+      inp('orgIdInput').value = r.orgId;
+      inp('loginMasterPw').value = pw;
+      inp('signupMasterPw').value = '';
+      inp('loginMasterPw').focus();
     } else {
       showMsg(err, r.message || '組織の作成に失敗しました。', 'error');
     }
   } catch (e) {
-    showMsg(err, '通信エラー: ' + e.message, 'error');
+    showMsg(err, '通信エラー: ' + errMsg(e), 'error');
   } finally {
-    $('createOrgBtn').disabled = false;
+    (inp('createOrgBtn') as unknown as HTMLButtonElement).disabled = false;
   }
 }
 
 // ---------- 組織にログイン ----------
-async function doLogin() {
-  var orgId = $('orgIdInput').value.trim();
-  var pw = $('loginMasterPw').value;
-  var err = $('loginError'); err.classList.add('hidden');
+async function doLogin(): Promise<void> {
+  const orgId = inp('orgIdInput').value.trim();
+  const pw = inp('loginMasterPw').value;
+  const err = $('loginError'); err.classList.add('hidden');
   if (!orgId) { showMsg(err, '組織IDを入力してください。', 'error'); return; }
   if (!pw) { showMsg(err, '管理者パスワードを入力してください。', 'error'); return; }
 
-  var hash = sha256(pw);
-  $('loginBtn').disabled = true;
+  const hash = sha256(pw);
+  (inp('loginBtn') as unknown as HTMLButtonElement).disabled = true;
   try {
-    var r = await api({ action: 'login', orgId: orgId, userId: 'MASTER', passwordHash: hash });
+    const r = await api<LoginResult>({ action: 'login', orgId, userId: 'MASTER', passwordHash: hash });
     if (r.success && r.userId === 'MASTER') {
       session = { orgId: r.orgId || orgId, orgName: r.orgName || '', passwordHash: hash };
-      $('loginMasterPw').value = '';
+      inp('loginMasterPw').value = '';
       applyLoggedIn();
     } else if (r.success) {
       showMsg(err, '管理者パスワードが一致しません。', 'error');
@@ -173,132 +196,136 @@ async function doLogin() {
       showMsg(err, r.message || 'ログインに失敗しました。', 'error');
     }
   } catch (e) {
-    showMsg(err, '通信エラー: ' + e.message, 'error');
+    showMsg(err, '通信エラー: ' + errMsg(e), 'error');
   } finally {
-    $('loginBtn').disabled = false;
+    (inp('loginBtn') as unknown as HTMLButtonElement).disabled = false;
   }
 }
-function doLogout() {
+function doLogout(): void {
   session = null;
   $('adminArea').classList.add('hidden');
   $('authArea').classList.remove('hidden');
   $('logoutBtn').classList.add('hidden');
   $('sessionBadge').classList.add('hidden');
 }
-function applyLoggedIn() {
+function applyLoggedIn(): void {
+  if (!session) return;
   $('authArea').classList.add('hidden');
   $('adminArea').classList.remove('hidden');
   $('logoutBtn').classList.remove('hidden');
   $('orgBarName').textContent = session.orgName || '(組織)';
   $('orgBarId').textContent = session.orgId;
-  var badge = $('sessionBadge');
+  const badge = $('sessionBadge');
   badge.textContent = (session.orgName || '組織') + ' · マスター';
   badge.classList.remove('hidden');
   switchTab('users');
 }
 
 // ---------- ユーザー ----------
-async function loadUsers() {
-  var ul = $('userList'); ul.innerHTML = '<li class="empty">読み込み中…</li>';
+async function loadUsers(): Promise<void> {
+  const ul = $('userList'); ul.innerHTML = '<li class="empty">読み込み中…</li>';
   try {
-    var r = await authCall('listUsers');
+    const r = await authCall<ListUsersResult>('listUsers');
     if (!r.success) { ul.innerHTML = '<li class="empty">' + esc(r.message) + '</li>'; return; }
-    var users = r.users || [];
+    const users = r.users || [];
     if (!users.length) { ul.innerHTML = '<li class="empty">ユーザーがいません</li>'; return; }
     ul.innerHTML = '';
-    users.forEach(function (u) {
-      var li = document.createElement('li');
+    users.forEach((u) => {
+      const li = document.createElement('li');
       li.innerHTML =
         '<div class="meta"><div class="title">' + esc(u.userName || u.userId) + '</div>' +
         '<div class="sub">ID: ' + esc(u.userId) + '</div></div>' +
         '<div class="actions"><button class="danger-btn">削除</button></div>';
-      li.querySelector('.danger-btn').addEventListener('click', function () { deleteUser(u.userId); });
+      const btn = li.querySelector('.danger-btn');
+      if (btn) btn.addEventListener('click', () => deleteUser(u.userId));
       ul.appendChild(li);
     });
-  } catch (e) { ul.innerHTML = '<li class="empty">' + esc(e.message) + '</li>'; }
+  } catch (e) { ul.innerHTML = '<li class="empty">' + esc(errMsg(e)) + '</li>'; }
 }
-async function addUser() {
-  var id = $('newUserId').value.trim();
-  var name = $('newUserName').value.trim();
-  var pw = $('newUserPw').value;
-  var msg = $('userMsg');
+async function addUser(): Promise<void> {
+  const id = inp('newUserId').value.trim();
+  const name = inp('newUserName').value.trim();
+  const pw = inp('newUserPw').value;
+  const msg = $('userMsg');
   if (!id || !pw) { showMsg(msg, 'ユーザーIDと初期パスワードは必須です。', 'error'); return; }
   try {
-    var r = await authCall('register', { newUserId: id, newUserName: name, newPasswordHash: sha256(pw) });
+    const r = await authCall<BaseResult>('register', { newUserId: id, newUserName: name, newPasswordHash: sha256(pw) });
     if (r.success) {
       showMsg(msg, 'ユーザー「' + id + '」を登録しました。', 'ok');
-      $('newUserId').value = ''; $('newUserName').value = ''; $('newUserPw').value = '';
+      inp('newUserId').value = ''; inp('newUserName').value = ''; inp('newUserPw').value = '';
       loadUsers();
     } else { showMsg(msg, r.message || '登録に失敗しました。', 'error'); }
-  } catch (e) { showMsg(msg, '通信エラー: ' + e.message, 'error'); }
+  } catch (e) { showMsg(msg, '通信エラー: ' + errMsg(e), 'error'); }
 }
-async function deleteUser(userId) {
+async function deleteUser(userId: string): Promise<void> {
   if (!confirm('ユーザー「' + userId + '」を削除しますか？')) return;
-  var msg = $('userMsg');
+  const msg = $('userMsg');
   try {
-    var r = await authCall('deleteUser', { targetUserId: userId });
+    const r = await authCall<BaseResult>('deleteUser', { targetUserId: userId });
     showMsg(msg, r.success ? 'ユーザー「' + userId + '」を削除しました。' : (r.message || '削除に失敗しました。'), r.success ? 'ok' : 'error');
     loadUsers();
-  } catch (e) { showMsg(msg, '通信エラー: ' + e.message, 'error'); }
+  } catch (e) { showMsg(msg, '通信エラー: ' + errMsg(e), 'error'); }
 }
 
 // ---------- ログ ----------
-async function loadLogs() {
-  var ul = $('logList'); ul.innerHTML = '<li class="empty">読み込み中…</li>';
+async function loadLogs(): Promise<void> {
+  const ul = $('logList'); ul.innerHTML = '<li class="empty">読み込み中…</li>';
   try {
-    var r = await authCall('getLogs', { limit: 100 });
-    var logs = (r.success && r.logs) ? r.logs : [];
+    const r = await authCall<GetLogsResult>('getLogs', { limit: 100 });
+    const logs = (r.success && r.logs) ? r.logs : [];
     if (!logs.length) { ul.innerHTML = '<li class="empty">ログはありません</li>'; return; }
     ul.innerHTML = '';
-    logs.forEach(function (log) {
-      var color = log.action.indexOf('login') === 0 ? 'var(--ok)' : (log.action === 'logout' ? 'var(--sub)' : 'var(--warn)');
-      var li = document.createElement('li');
+    logs.forEach((log) => {
+      const color = log.action.indexOf('login') === 0 ? 'var(--ok)' : (log.action === 'logout' ? 'var(--sub)' : 'var(--warn)');
+      const li = document.createElement('li');
       li.innerHTML =
         '<div class="meta"><div class="title"><span class="log-dot" style="background:' + color + '"></span>' +
         esc(log.userName || log.userId) + ' <span class="sub">・' + esc(actionLabel(log.action)) + '</span></div></div>' +
         '<div class="sub">' + fmtTime(log.timestamp) + '</div>';
       ul.appendChild(li);
     });
-  } catch (e) { ul.innerHTML = '<li class="empty">' + esc(e.message) + '</li>'; }
+  } catch (e) { ul.innerHTML = '<li class="empty">' + esc(errMsg(e)) + '</li>'; }
 }
-function actionLabel(a) {
+function actionLabel(a: string): string {
   if (a.indexOf('login') === 0) return a.indexOf('mobile') >= 0 ? 'ログイン(スマホ承認)' : 'ログイン';
   if (a === 'logout') return 'ログアウト';
   return a;
 }
 
 // ---------- 承認 ----------
-async function loadApprovals() {
-  var ul = $('approvalList'); ul.innerHTML = '<li class="empty">読み込み中…</li>';
+async function loadApprovals(): Promise<void> {
+  const ul = $('approvalList'); ul.innerHTML = '<li class="empty">読み込み中…</li>';
   try {
-    var r = await authCall('listRequests');
-    var reqs = (r.success && r.requests) ? r.requests : [];
+    const r = await authCall<ListRequestsResult>('listRequests');
+    const reqs = (r.success && r.requests) ? r.requests : [];
     if (!reqs.length) { ul.innerHTML = '<li class="empty">保留中の承認はありません</li>'; return; }
     ul.innerHTML = '';
-    reqs.forEach(function (req) {
-      var li = document.createElement('li');
+    reqs.forEach((req) => {
+      const li = document.createElement('li');
       li.innerHTML =
         '<div class="meta"><div class="title">💻 ' + esc(req.deviceName) + '</div>' +
         '<div class="sub">' + esc(req.userName || req.userId) + '（' + esc(req.userId) + '）· ' + fmtTime(req.createdAt) + '</div></div>' +
         '<div class="actions"><button class="danger-btn deny">拒否</button><button class="primary-btn approve">承認</button></div>';
-      li.querySelector('.approve').addEventListener('click', function () { respond(req.requestId, 'approve'); });
-      li.querySelector('.deny').addEventListener('click', function () { respond(req.requestId, 'deny'); });
+      const ap = li.querySelector('.approve');
+      const dn = li.querySelector('.deny');
+      if (ap) ap.addEventListener('click', () => respond(req.requestId, 'approve'));
+      if (dn) dn.addEventListener('click', () => respond(req.requestId, 'deny'));
       ul.appendChild(li);
     });
-  } catch (e) { ul.innerHTML = '<li class="empty">' + esc(e.message) + '</li>'; }
+  } catch (e) { ul.innerHTML = '<li class="empty">' + esc(errMsg(e)) + '</li>'; }
 }
-async function respond(requestId, decision) {
-  try { await authCall('respondRequest', { requestId: requestId, decision: decision }); }
+async function respond(requestId: string, decision: 'approve' | 'deny'): Promise<void> {
+  try { await authCall<BaseResult>('respondRequest', { requestId, decision }); }
   catch (e) { /* 再読込に任せる */ }
   loadApprovals();
 }
 
 // ---------- タブ ----------
-function switchTab(name) {
-  ['users', 'logs', 'approvals'].forEach(function (t) {
+function switchTab(name: TabName): void {
+  (['users', 'logs', 'approvals'] as TabName[]).forEach((t) => {
     $('tab-' + t).classList.toggle('hidden', t !== name);
   });
-  document.querySelectorAll('.tab').forEach(function (b) {
+  document.querySelectorAll('.tab').forEach((b) => {
     b.classList.toggle('active', b.getAttribute('data-tab') === name);
   });
   if (name === 'users') loadUsers();
@@ -307,53 +334,58 @@ function switchTab(name) {
 }
 
 // ---------- コピー ----------
-function copyText(text, btn) {
-  var done = function () {
+function copyText(text: string, btn?: HTMLElement): void {
+  const done = (): void => {
     if (!btn) return;
-    var orig = btn.textContent; btn.textContent = 'コピーしました';
-    setTimeout(function () { btn.textContent = orig; }, 1200);
+    const orig = btn.textContent; btn.textContent = 'コピーしました';
+    setTimeout(() => { btn.textContent = orig; }, 1200);
   };
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text, done); });
+    navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
   } else { fallbackCopy(text, done); }
 }
-function fallbackCopy(text, done) {
-  var ta = document.createElement('textarea');
+function fallbackCopy(text: string, done: () => void): void {
+  const ta = document.createElement('textarea');
   ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
   document.body.appendChild(ta); ta.select();
   try { document.execCommand('copy'); } catch (e) { /* ignore */ }
   document.body.removeChild(ta); done();
 }
 
-// ---------- 初期化 ----------
-function init() {
-  $('schemaSql').textContent = SCHEMA_SQL;
-  $('apiUrl').value = localStorage.getItem('pclc.apiBase') || '';
+function errMsg(e: unknown): string { return e instanceof Error ? e.message : String(e); }
 
-  $('settingsBtn').addEventListener('click', function () { $('settingsPanel').classList.toggle('hidden'); });
-  $('saveApiUrl').addEventListener('click', function () {
-    var v = $('apiUrl').value.trim();
+// ---------- 初期化 ----------
+function init(): void {
+  $('schemaSql').textContent = SCHEMA_SQL;
+  inp('apiUrl').value = localStorage.getItem('pclc.apiBase') || '';
+
+  $('settingsBtn').addEventListener('click', () => $('settingsPanel').classList.toggle('hidden'));
+  $('saveApiUrl').addEventListener('click', () => {
+    const v = inp('apiUrl').value.trim();
     if (v) localStorage.setItem('pclc.apiBase', v); else localStorage.removeItem('pclc.apiBase');
     $('settingsPanel').classList.add('hidden');
     refreshHealth();
   });
 
   $('createOrgBtn').addEventListener('click', createOrg);
-  $('copyOrgId').addEventListener('click', function () { copyText($('orgIdValue').textContent, this); });
+  const copyOrgIdBtn = $('copyOrgId');
+  copyOrgIdBtn.addEventListener('click', () => copyText($('orgIdValue').textContent || '', copyOrgIdBtn));
   $('loginBtn').addEventListener('click', doLogin);
-  $('loginMasterPw').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
+  inp('loginMasterPw').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
   $('logoutBtn').addEventListener('click', doLogout);
-  $('copyOrgBarId').addEventListener('click', function () { copyText($('orgBarId').textContent, this); });
+  const copyBarBtn = $('copyOrgBarId');
+  copyBarBtn.addEventListener('click', () => copyText($('orgBarId').textContent || '', copyBarBtn));
 
   $('refreshHealth').addEventListener('click', refreshHealth);
-  $('copySql').addEventListener('click', function () { copyText(SCHEMA_SQL, this); });
+  const copySqlBtn = $('copySql');
+  copySqlBtn.addEventListener('click', () => copyText(SCHEMA_SQL, copySqlBtn));
 
   $('addUser').addEventListener('click', addUser);
   $('refreshUsers').addEventListener('click', loadUsers);
   $('refreshLogs').addEventListener('click', loadLogs);
   $('refreshApprovals').addEventListener('click', loadApprovals);
-  document.querySelectorAll('.tab').forEach(function (b) {
-    b.addEventListener('click', function () { switchTab(b.getAttribute('data-tab')); });
+  document.querySelectorAll('.tab').forEach((b) => {
+    b.addEventListener('click', () => switchTab(b.getAttribute('data-tab') as TabName));
   });
 
   refreshHealth();
