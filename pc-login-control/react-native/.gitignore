@@ -1,0 +1,43 @@
+# --- Node ---
+node_modules/
+npm-debug.log
+yarn-error.log
+.metro-health-check*
+metro.config.local.js
+
+# --- 一時ネイティブ生成物 ---
+.tmp-native/
+
+# --- React Native / Metro ---
+.expo/
+*.jsbundle
+
+# --- Windows (RNW) ---
+pc-windows/windows/**/Debug/
+pc-windows/windows/**/Release/
+pc-windows/windows/**/x64/
+pc-windows/windows/**/x86/
+pc-windows/windows/**/ARM64/
+pc-windows/windows/**/bin/
+pc-windows/windows/**/obj/
+pc-windows/windows/packages/
+
+# --- Android ---
+mobile/android/.gradle/
+mobile/android/app/build/
+mobile/android/build/
+mobile/android/local.properties
+*.keystore
+!debug.keystore
+
+# --- iOS ---
+mobile/ios/build/
+mobile/ios/Pods/
+mobile/ios/*.xcworkspace/xcuserdata/
+mobile/ios/**/xcuserdata/
+
+# --- OS / エディタ ---
+.DS_Store
+*.log
+.idea/
+.vscode/

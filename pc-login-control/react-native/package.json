@@ -1,0 +1,19 @@
+{
+  "name": "pc-login-control-rn",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PC Login Control System — React Native モノレポ（PC(Windows) + モバイル）",
+  "workspaces": [
+    "packages/*",
+    "pc-windows",
+    "mobile"
+  ],
+  "scripts": {
+    "pc:start": "npm start --workspace pc-windows",
+    "pc:windows": "npm run windows --workspace pc-windows",
+    "mobile:start": "npm start --workspace mobile",
+    "mobile:android": "npm run android --workspace mobile",
+    "mobile:ios": "npm run ios --workspace mobile",
+    "typecheck": "tsc -p packages/core/tsconfig.json && tsc -p pc-windows/tsconfig.json --noEmit && tsc -p mobile/tsconfig.json --noEmit"
+  }
+}
