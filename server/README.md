@@ -6,8 +6,44 @@ Google Apps Script + スプレッドシートから、**Supabase（PostgreSQL）
 RN アプリ ──POST /api──▶ Vercel サーバーレス関数 ──service_role──▶ Supabase (Postgres)
 ```
 
-- API は GAS の `doPost` と**同じアクションベースの契約**（`login` / `logout` / `requestApproval` / `checkApproval` / `listRequests` / `respondRequest` / `getLogs` / `register`）
+- API は GAS の `doPost` と**同じアクションベースの契約**（`login` / `logout` / `requestApproval` / `checkApproval` / `listRequests` / `respondRequest` / `getLogs` / `register` / `health` / `listUsers` / `deleteUser`）
 - そのため RN 側は `API_URL` を差し替えるだけで動作します
+- デプロイURLの**ルート（`/`）には Web 管理コンソール**が付属します
+
+---
+
+## 🚀 かんたん導入（GUI 中心）
+
+コード編集なしで導入できます。
+
+### 1. Supabase を用意
+[Supabase](https://supabase.com/) でプロジェクトを作成し、**Project URL** と **service_role キー**
+（Project Settings → API）を控えます。DBテーブルは後述の管理コンソールから作成できます。
+
+### 2. Vercel にデプロイ（ボタン1つ）
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FC0uki%2Fpc-login-control&root-directory=server&env=SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,MASTER_PASS_HASH&project-name=pc-login-control&repository-name=pc-login-control)
+
+ボタンを押すとリポジトリが複製され、Vercel の画面で環境変数
+（`SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `MASTER_PASS_HASH`）の入力を求められます。
+`MASTER_PASS_HASH` は次の管理コンソール②で生成できます（先に手元で生成 → 入力）。
+
+> Root Directory は `server` を指定してください（ボタン経由なら自動設定されます）。
+
+### 3. 管理コンソールで初期設定・運用（ブラウザだけ）
+
+デプロイ完了後、`https://<あなたのapp>.vercel.app/` を開くと **管理コンソール** が表示されます。
+
+1. **① 導入状態** … API接続 / 環境変数 / マスターPW / DBテーブルの状態を信号表示
+2. **② マスターPWハッシュ生成** … 平文を入れると SHA-256 を生成 → Vercel の `MASTER_PASS_HASH` に設定
+3. **③ データベース初期化** … 表示されるSQLをコピーし、Supabaseの「SQL Editor」で実行（初回のみ）
+4. **④ 管理者ログイン** … マスターPWでログインし、**ユーザー登録/削除・利用ログ・承認**を画面操作
+
+このコンソールは静的ファイル（ビルド不要）で、`crypto.subtle` に依存しないため
+**どの環境・ブラウザでも**動作します。ローカルの `index.html` から開く場合は、
+右上 ⚙️ でデプロイ後の `…/api` を指定してください。
+
+以降は「手動で細かく設定したい人向け」の詳細手順です。
 
 ---
 

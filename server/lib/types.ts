@@ -25,4 +25,6 @@ export interface RequestData {
   newUserId?: string;
   newUserName?: string;
   newPasswordHash?: string;
+  // deleteUser（マスター権限での削除）
+  targetUserId?: string;
 }

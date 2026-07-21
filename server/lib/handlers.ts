@@ -19,6 +19,10 @@ export async function handle(data: RequestData): Promise<ApiResult> {
     case 'respondRequest':  return handleRespondRequest(data);
     case 'getLogs':         return handleGetLogs(data);
     case 'register':        return handleRegister(data);
+    // --- 管理コンソール（Web GUI）用 ---
+    case 'health':          return handleHealth();
+    case 'listUsers':       return handleListUsers(data);
+    case 'deleteUser':      return handleDeleteUser(data);
     default:                return fail('不正なアクションです');
   }
 }
@@ -198,6 +202,62 @@ async function handleRegister(data: RequestData): Promise<ApiResult> {
     );
   if (error) throw error;
   return ok('ユーザーを登録しました', { userId: newUserId });
+}
+
+// ---------- 管理コンソール（Web GUI）用 ----------
+
+/** 導入状態の確認（認証不要・真偽値のみ返す） */
+async function handleHealth(): Promise<ApiResult> {
+  const envConfigured = Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+  const masterConfigured = Boolean(process.env.MASTER_PASS_HASH);
+  let tablesReady = false;
+  let dbError: string | undefined;
+
+  if (envConfigured) {
+    try {
+      const { error } = await supabase
+        .from('users')
+        .select('user_id', { head: true, count: 'exact' });
+      if (error) dbError = error.message;
+      else tablesReady = true;
+    } catch (e) {
+      dbError = e instanceof Error ? e.message : String(e);
+    }
+  }
+  return { success: true, message: 'OK', envConfigured, masterConfigured, tablesReady, dbError };
+}
+
+/** ユーザー一覧（マスター権限。ハッシュは返さない） */
+async function handleListUsers(data: RequestData): Promise<ApiResult> {
+  const auth = await authenticateUser(data.userId, data.passwordHash);
+  if (!auth.ok || auth.userId !== 'MASTER') return fail('管理者(マスター)権限が必要です');
+
+  const { data: rows, error } = await supabase
+    .from('users')
+    .select('user_id, user_name, created_at')
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+
+  const users = (rows ?? []).map((r) => ({
+    userId: r.user_id,
+    userName: r.user_name,
+    createdAt: toIso(r.created_at),
+  }));
+  return ok('OK', { users });
+}
+
+/** ユーザー削除（マスター権限） */
+async function handleDeleteUser(data: RequestData): Promise<ApiResult> {
+  const auth = await authenticateUser(data.userId, data.passwordHash);
+  if (!auth.ok || auth.userId !== 'MASTER') return fail('管理者(マスター)権限が必要です');
+
+  const target = (data.targetUserId ?? '').trim();
+  if (!target) return fail('対象ユーザーIDが必要です');
+  if (target === 'MASTER') return fail('MASTER は削除できません');
+
+  const { error } = await supabase.from('users').delete().eq('user_id', target);
+  if (error) throw error;
+  return ok('ユーザーを削除しました', { userId: target });
 }
 
 // ---------- helpers ----------
