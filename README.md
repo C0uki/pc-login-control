@@ -233,8 +233,8 @@ pc-login-control/
 ├── server/                   ← ★ Vercel サーバーレスAPI + 管理コンソール
 │   ├── api/index.ts          ← エンドポイント（POST /api）
 │   ├── lib/{handlers,auth,supabase,types}.ts
-│   ├── index.html            ← Web 管理コンソール（GUI・/ で配信）
-│   ├── app.js / styles.css / sha256.js
+│   ├── index.html / styles.css  ← Web 管理コンソール（GUI・/ で配信）
+│   ├── console/{app,sha256}.ts  ← コンソール(TypeScript)。tsc で console/*.js を生成
 │   └── README.md             ← Supabase + Vercel セットアップ
 ├── react-native/             ← ★ React Native 版（クライアント）
 │   ├── README.md

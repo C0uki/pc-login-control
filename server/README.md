@@ -9,6 +9,7 @@ RN アプリ / 管理コンソール ──POST /api {orgId,…}──▶ Vercel
 
 - アクション: `createOrg` / `login` / `logout` / `requestApproval` / `checkApproval` / `listRequests` / `respondRequest` / `getLogs` / `register` / `listUsers` / `deleteUser` / `health`
 - デプロイURLの**ルート（`/`）に Web 管理コンソール**（組織作成・ログイン・管理）
+- **API・管理コンソールとも TypeScript**（コンソールは `console/*.ts` → `console/*.js` に `tsc` でビルド）
 - マスターパスワードは**組織ごと**に保持（環境変数 `MASTER_PASS_HASH` は廃止）
 
 ---
@@ -138,6 +139,24 @@ curl -X POST https://<owner-app>.vercel.app/api -H 'Content-Type: application/js
   "newPasswordHash":"<新ユーザーPWのSHA256>"
 }'
 ```
+
+---
+
+## 管理コンソールの開発（TypeScript）
+
+管理コンソールも TypeScript です。ソースは `console/*.ts`、ブラウザ配信用の
+`console/*.js` は次のコマンドで生成します（**`.js` は直接編集しない**）。
+
+```bash
+cd server
+npm install
+npm run build:console     # console/app.ts, console/sha256.ts → console/*.js
+npm run typecheck         # API(api/lib) + コンソール(console) を型チェック
+```
+
+`tsc` はグローバルスクリプトとして出力するためバンドラー不要で、生成物は
+そのまま Vercel が静的配信します（デプロイ構成は従来どおり）。
+`console/sha256.ts` は `crypto.subtle` 非依存で、`node:crypto` と同一出力を検証済みです。
 
 ---
 
