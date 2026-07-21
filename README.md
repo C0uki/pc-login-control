@@ -7,18 +7,30 @@
 > - バックエンド: [`server/README.md`](server/README.md) / [`supabase/README.md`](supabase/README.md)
 > - 旧 Electron 版は [`electron/`](electron/)、旧 GAS 版は [`gas/`](gas/) に参照用として残しています。
 
-## 🚀 かんたん導入（GUI・コード編集不要）
+## 🚀 かんたん導入（マルチテナント SaaS）
 
-1. **Vercel にワンクリックデプロイ**（環境変数は画面で入力）
+**オーナーが1つのバックエンド（Supabase + Vercel）を運用**し、**導入者は「組織」を作るだけ**で使えます。
+役割は2つに分かれます。
 
-   [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FC0uki%2Fpc-login-control&root-directory=server&env=SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,MASTER_PASS_HASH&project-name=pc-login-control&repository-name=pc-login-control)
+### 導入者（各組織の管理者）— クラウド操作は不要
 
-2. デプロイURL（`https://<app>.vercel.app/`）を開くと **Web 管理コンソール** が表示されます。
-   マスターPWハッシュ生成 → DB初期化SQLのコピー → 導入状態チェック → ユーザー登録/ログ/承認まで、
-   すべて**ブラウザだけ**で完結します（ビルド不要・どの環境でも動作）。
+1. オーナーから共有された **コンソールURL** をブラウザで開く
+2. 「**組織を作成**」に組織名と管理者パスワードを入力 → 表示された **組織ID** を控える
+3. 「組織にログイン」→ ユーザー登録・利用ログ・承認を**ブラウザだけ**で管理
+4. PC・モバイルアプリに、固定の **API_URL** と自分の **組織ID (`ORG_ID`)** を設定して配布
 
-詳細は [`server/README.md`](server/README.md#-かんたん導入gui-中心) を参照してください。
-以下は各コンポーネントの個別セットアップ手順です。
+> Supabase や Vercel のアカウント作成・操作は一切不要です。
+
+### オーナー（システム提供者）— 初回のみ
+
+1. **Vercel にワンクリックデプロイ**（環境変数 `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` を画面入力。組織作成を制限するなら任意で `SIGNUP_CODE`）
+
+   [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FC0uki%2Fpc-login-control&root-directory=server&env=SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY&project-name=pc-login-control&repository-name=pc-login-control)
+
+2. デプロイURL の `/` を開き、「**オーナー向け：初回セットアップ**」から **スキーマSQL** を Supabase で実行
+3. あとは導入者にコンソールURLを共有するだけ
+
+詳細は [`server/README.md`](server/README.md) を参照してください。
 
 ## 構成概要
 
@@ -31,12 +43,15 @@
 └──────────────────────────┘                                      │ service_role
                                                        ┌──────────▼───────────┐
 ┌──────────────────────────┐   listRequests /          │  Supabase (Postgres) │
-│  mobile (iOS / Android)  │   respondRequest / getLogs │  ・users             │
-│  React Native            │ ────────POST /api───────▶ │  ・logs              │
+│  mobile (iOS / Android)  │   respondRequest / getLogs │  ・organizations     │
+│  React Native            │ ────────POST /api───────▶ │  ・users / logs      │
 │  ・PCログインを承認      │ ◀───────────────────────  │  ・approval_requests │
 │  ・利用ログ閲覧          │                           └──────────────────────┘
 └──────────────────────────┘
 ```
+
+> オーナーが1つのバックエンド（Supabase + Vercel）を運用し、各組織（`org_id`）で
+> データを分離するマルチテナント構成です。導入者は「組織」を作るだけで利用できます。
 
 ---
 
@@ -44,24 +59,28 @@
 
 導入（セットアップ）と、日々の運用（利用者ログイン・管理者）の流れです。
 
-### 1. 導入（セットアップ）
+### 1a. 導入 — オーナー（初回のみ）
 
-コード編集なし・ブラウザ中心。①〜⑤は Web 管理コンソールの手順に対応します。
+Supabase / Vercel を用意するのはこの一度だけ。以後の導入者は触りません。
 
 ```mermaid
 flowchart TD
-  P["マスターPWの SHA-256 を用意<br/>（管理コンソール② / sha256sum）"] --> C["環境変数を入力<br/>SUPABASE_URL / SERVICE_ROLE_KEY / MASTER_PASS_HASH"]
-  A["Supabase プロジェクト作成<br/>URL・service_role キー取得"] --> B["Vercel へデプロイ<br/>Deploy to Vercel ボタン"]
-  B --> C
-  C --> D["デプロイ URL / を開く（= Web 管理コンソール）"]
-  D --> E{"① 導入状態<br/>DBテーブルは作成済み?"}
-  E -->|いいえ| F["③ スキーマSQLをコピー<br/>Supabase SQL Editor で実行"]
-  F --> E
-  E -->|はい| G["④ マスターでログイン"]
-  G --> H["⑤ ユーザーを登録"]
-  H --> I["クライアント設定<br/>config.ts の API_URL をデプロイURLに"]
-  I --> J["PC(Windows)・モバイルアプリを<br/>ビルド／配布"]
-  J --> K(["導入完了 ✅"])
+  A["Supabase プロジェクト作成<br/>URL・service_role キー取得"] --> B["Vercel へワンクリックデプロイ<br/>環境変数を画面で入力"]
+  B --> C["デプロイ URL / を開く（Web 管理コンソール）"]
+  C --> D["「オーナー向け：初回セットアップ」→<br/>スキーマSQLを Supabase で実行"]
+  D --> E(["提供準備 完了 ✅<br/>コンソールURLを導入者へ共有"])
+```
+
+### 1b. 導入 — 導入者（各組織・クラウド操作なし）
+
+```mermaid
+flowchart TD
+  A["共有された コンソールURL を開く"] --> B["「組織を作成」<br/>組織名＋管理者パスワード"]
+  B --> C["組織ID を取得・控える"]
+  C --> D["「組織にログイン」→ ユーザーを登録"]
+  D --> E["PC・モバイルアプリに設定<br/>API_URL（固定）＋ ORG_ID（自組織）"]
+  E --> F["アプリをビルド／配布"]
+  F --> G(["導入完了 ✅"])
 ```
 
 ### 2. 運用 — 利用者のログイン
@@ -101,18 +120,21 @@ flowchart LR
 
 ---
 
-## STEP 1: Supabase（データベース）
+> **以下はオーナー向けの詳細手順です。** 導入者はここから先を実施する必要はありません
+> （オーナーから共有された **コンソールURL** を開いて「組織を作成」するだけ）。
+
+## STEP 1: Supabase（データベース）※オーナーのみ
 
 1. [Supabase](https://supabase.com/) で新規プロジェクトを作成
 2. 「SQL Editor」で [`supabase/schema.sql`](supabase/schema.sql) を実行
-   （`users` / `logs` / `approval_requests` を作成）
+   （`organizations` / `users` / `logs` / `approval_requests` を作成）
 3. 「Project Settings → API」から **Project URL** と **service_role キー** を控える
 
 詳細: [`supabase/README.md`](supabase/README.md)
 
 ---
 
-## STEP 2: Vercel（サーバーレスAPI）
+## STEP 2: Vercel（サーバーレスAPI）※オーナーのみ
 
 ```bash
 cd server
@@ -120,26 +142,22 @@ npm install
 npx vercel                       # プロジェクトをリンク
 npx vercel env add SUPABASE_URL
 npx vercel env add SUPABASE_SERVICE_ROLE_KEY
-npx vercel env add MASTER_PASS_HASH   # マスターPWの SHA-256
+# 任意: 組織作成を制限する場合のみ  npx vercel env add SIGNUP_CODE
 npx vercel deploy --prod
 ```
 
-デプロイ後の `https://<app>.vercel.app/api` が API エンドポイントです。
-マスターPWのハッシュは `printf '%s' 'あなたのPW' | sha256sum` で取得できます。
+デプロイ後、`https://<app>.vercel.app/` が **管理コンソール**、`…/api` が API エンドポイントです。
+マスターパスワードは組織ごとにコンソールで設定するため、環境変数での設定は不要になりました。
 
 詳細: [`server/README.md`](server/README.md)
 
 ---
 
-## STEP 3: ユーザー登録
+## STEP 3: 組織とユーザー（導入者）
 
-GAS 版の Google フォームは廃止し、**マスター権限の `register` API** に置き換えました。
-API 経由（`@pclc/core` の `register()` / curl）か、Supabase の Table Editor で
-`users` に追加します（`hashed_password` は平文PWの SHA-256）。手順は
-[`server/README.md`](server/README.md#ユーザー登録google-フォームの置き換え) を参照。
-
-既存スプレッドシートからの移行手順も同 README に記載しています
-（ハッシュ方式は同一のため既存パスワードはそのまま利用可能）。
+各導入者は、コンソールURL の「**組織を作成**」で組織を作り、表示される **組織ID** を控えます。
+その後「組織にログイン」→「ユーザー」タブで、ID・名前・初期パスワードを入力して登録します
+（すべてブラウザ操作。内部的には `register` API）。**Supabase / Vercel を直接触る必要はありません。**
 
 ---
 
@@ -155,10 +173,13 @@ PC クライアント（Windows）とモバイルアプリ（iOS / Android）の
    npm install
    ```
 
-2. `react-native/packages/core/src/config.ts` の `API_URL` に STEP 2 の URL を貼り付け
+2. `react-native/packages/core/src/config.ts` を設定
+   - `API_URL`: オーナーの固定 API URL（全組織共通）
+   - `ORG_ID`: 導入者が取得した組織ID（`setOrgId()` で実行時に上書きも可能）
 
    ```ts
-   export const API_URL = 'https://your-app.vercel.app/api';
+   export const API_URL = 'https://<owner-app>.vercel.app/api';
+   export const ORG_ID  = 'あなたの組織ID';
    ```
 
 3. PC（Windows）クライアント

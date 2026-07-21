@@ -1,11 +1,15 @@
 // =====================================================
 // 共通設定
-//   API_URL は Vercel にデプロイした API のURLに書き換えてください。
-//   （server/ を `vercel deploy` して取得。末尾は /api）
-//   例: https://your-app.vercel.app/api
+//   ・API_URL: オーナーが運用する Vercel API のURL（全導入者で共通・固定）
+//     例: https://pc-login-control.vercel.app/api
+//   ・ORG_ID: 導入者が管理コンソールで組織を作成して得た「組織ID」。
+//     このアプリを使う組織ごとに設定します（setOrgId でも上書き可能）。
 // =====================================================
 
 export const API_URL = 'https://your-app.vercel.app/api';
+
+/** 導入者の組織ID（管理コンソールの「組織を作成」で取得） */
+export const ORG_ID = '';
 
 /** API へのリクエストタイムアウト(ms) */
 export const REQUEST_TIMEOUT_MS = 10_000;

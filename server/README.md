@@ -1,49 +1,52 @@
-# PC Login Control — バックエンド（Supabase + Vercel）
+# PC Login Control — バックエンド（Supabase + Vercel・マルチテナント）
 
-Google Apps Script + スプレッドシートから、**Supabase（PostgreSQL）+ Vercel（サーバーレスAPI）** へ移行したバックエンドです。
+**オーナーが1つの Supabase+Vercel を運用**し、**導入者は「組織(organization)」を作るだけ**で使える
+SaaS 型バックエンドです。データは `org_id` でテナント分離します。
 
 ```
-RN アプリ ──POST /api──▶ Vercel サーバーレス関数 ──service_role──▶ Supabase (Postgres)
+RN アプリ / 管理コンソール ──POST /api {orgId,…}──▶ Vercel ──service_role──▶ Supabase (org_id で分離)
 ```
 
-- API は GAS の `doPost` と**同じアクションベースの契約**（`login` / `logout` / `requestApproval` / `checkApproval` / `listRequests` / `respondRequest` / `getLogs` / `register` / `health` / `listUsers` / `deleteUser`）
-- そのため RN 側は `API_URL` を差し替えるだけで動作します
-- デプロイURLの**ルート（`/`）には Web 管理コンソール**が付属します
+- アクション: `createOrg` / `login` / `logout` / `requestApproval` / `checkApproval` / `listRequests` / `respondRequest` / `getLogs` / `register` / `listUsers` / `deleteUser` / `health`
+- デプロイURLの**ルート（`/`）に Web 管理コンソール**（組織作成・ログイン・管理）
+- マスターパスワードは**組織ごと**に保持（環境変数 `MASTER_PASS_HASH` は廃止）
 
 ---
 
-## 🚀 かんたん導入（GUI 中心）
+## 導入者（各組織の管理者）— クラウド操作は不要
 
-コード編集なしで導入できます。
+1. オーナーから共有された **コンソールURL** を開く
+2. 「**組織を作成**」→ 組織名＋管理者パスワード → 表示された **組織ID** を控える
+3. 「組織にログイン」→ ユーザー登録・利用ログ・承認をブラウザで管理
+4. PC/モバイルアプリに `API_URL`（固定）と `ORG_ID`（自組織）を設定して配布
+
+Supabase / Vercel のアカウントや操作は不要です。
+
+---
+
+## オーナー — 初回セットアップ（一度だけ）
 
 ### 1. Supabase を用意
 [Supabase](https://supabase.com/) でプロジェクトを作成し、**Project URL** と **service_role キー**
-（Project Settings → API）を控えます。DBテーブルは後述の管理コンソールから作成できます。
+（Project Settings → API）を控えます。
 
 ### 2. Vercel にデプロイ（ボタン1つ）
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FC0uki%2Fpc-login-control&root-directory=server&env=SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,MASTER_PASS_HASH&project-name=pc-login-control&repository-name=pc-login-control)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FC0uki%2Fpc-login-control&root-directory=server&env=SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY&project-name=pc-login-control&repository-name=pc-login-control)
 
-ボタンを押すとリポジトリが複製され、Vercel の画面で環境変数
-（`SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `MASTER_PASS_HASH`）の入力を求められます。
-`MASTER_PASS_HASH` は次の管理コンソール②で生成できます（先に手元で生成 → 入力）。
+Vercel の画面で `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY`（組織作成を制限するなら任意で `SIGNUP_CODE`）
+を入力します。Root Directory は `server`（ボタン経由なら自動設定）。
 
-> Root Directory は `server` を指定してください（ボタン経由なら自動設定されます）。
+### 3. DB初期化（コンソールから）
 
-### 3. 管理コンソールで初期設定・運用（ブラウザだけ）
+`https://<あなたのapp>.vercel.app/` を開き、「**オーナー向け：初回セットアップ**」を展開 →
+スキーマSQLをコピーして Supabase「SQL Editor」で実行。「再確認」で **DBテーブル** が緑になれば完了です。
 
-デプロイ完了後、`https://<あなたのapp>.vercel.app/` を開くと **管理コンソール** が表示されます。
+以降は導入者にコンソールURLを共有するだけ。コンソールは静的ファイル（ビルド不要・
+`crypto.subtle` 非依存）で **どの環境・ブラウザでも**動作します。ローカルの `index.html` から開く場合は、
+右上 ⚙️ で API の URL を指定してください。
 
-1. **① 導入状態** … API接続 / 環境変数 / マスターPW / DBテーブルの状態を信号表示
-2. **② マスターPWハッシュ生成** … 平文を入れると SHA-256 を生成 → Vercel の `MASTER_PASS_HASH` に設定
-3. **③ データベース初期化** … 表示されるSQLをコピーし、Supabaseの「SQL Editor」で実行（初回のみ）
-4. **④ 管理者ログイン** … マスターPWでログインし、**ユーザー登録/削除・利用ログ・承認**を画面操作
-
-このコンソールは静的ファイル（ビルド不要）で、`crypto.subtle` に依存しないため
-**どの環境・ブラウザでも**動作します。ローカルの `index.html` から開く場合は、
-右上 ⚙️ でデプロイ後の `…/api` を指定してください。
-
-以降は「手動で細かく設定したい人向け」の詳細手順です。
+以降は手動で細かく設定したい人向けの詳細手順です。
 
 ---
 
@@ -51,7 +54,7 @@ RN アプリ ──POST /api──▶ Vercel サーバーレス関数 ──serv
 
 1. [Supabase](https://supabase.com/) で新規プロジェクトを作成
 2. 「SQL Editor」を開き、[`../supabase/schema.sql`](../supabase/schema.sql) を貼り付けて実行
-   - `users` / `logs` / `approval_requests` テーブルと RLS が作成されます
+   - `organizations` / `users` / `logs` / `approval_requests` テーブルと RLS が作成されます
 3. 「Project Settings → API」から以下を控える
    - **Project URL**（`SUPABASE_URL`）
    - **service_role** キー（`SUPABASE_SERVICE_ROLE_KEY`）※秘密鍵。公開厳禁
@@ -74,7 +77,7 @@ cp .env.example .env
 |------|------|
 | `SUPABASE_URL` | Supabase の Project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | service_role キー（サーバー専用の秘密鍵） |
-| `MASTER_PASS_HASH` | マスターパスワードの SHA-256（`printf '%s' 'PW' \| sha256sum`） |
+| `SIGNUP_CODE` | （任意）設定すると組織作成にこのコードが必要になります |
 
 ---
 
@@ -86,7 +89,8 @@ npm install
 npx vercel            # 初回：プロジェクトをリンク
 npx vercel env add SUPABASE_URL
 npx vercel env add SUPABASE_SERVICE_ROLE_KEY
-npx vercel env add MASTER_PASS_HASH
+# 任意: 組織作成を制限する場合のみ
+npx vercel env add SIGNUP_CODE
 npx vercel deploy --prod
 ```
 
@@ -104,53 +108,44 @@ curl -X POST http://localhost:3000/api \
 
 ---
 
-## STEP 4: クライアント（RN）を新 API に向ける
+## STEP 4: クライアント（RN）の設定
 
-`react-native/packages/core/src/config.ts` の `API_URL` を Vercel の URL に変更します。
+`react-native/packages/core/src/config.ts` を設定します。
 
 ```ts
-export const API_URL = 'https://your-app.vercel.app/api';
+export const API_URL = 'https://<owner-app>.vercel.app/api'; // オーナー共通の固定URL
+export const ORG_ID  = 'あなたの組織ID';                      // 導入者ごと（setOrgId() で実行時上書きも可）
 ```
 
-RN 側のコードはこれ以外の変更不要です（関数の入出力は GAS 版と同一）。
+各リクエストには `ORG_ID` が自動付与され、組織スコープで処理されます。
+関数の入出力は従来どおりで、画面コードの変更は不要です。
 
 ---
 
-## ユーザー登録（Google フォームの置き換え）
+## ユーザー登録
 
-GAS 版の Google フォーム連携は廃止し、**マスター権限の `register` API** に置き換えました。
+**管理コンソールの「ユーザー」タブ**から登録するのが基本です（ブラウザ操作）。
+API を直接使う場合は、組織ID・組織マスターの資格情報を添えて `register` を呼びます。
 
-- API 経由（`@pclc/core` の `register()`、またはcurl）:
-
-  ```bash
-  curl -X POST https://your-app.vercel.app/api -H 'Content-Type: application/json' -d '{
-    "action":"register",
-    "userId":"MASTER",
-    "passwordHash":"<マスターPWのSHA256>",
-    "newUserId":"taro",
-    "newUserName":"山田太郎",
-    "newPasswordHash":"<新ユーザーPWのSHA256>"
-  }'
-  ```
-
-- または Supabase ダッシュボードの Table Editor で `users` に直接追加
-  （`hashed_password` は平文PWの SHA-256 小文字HEX）
-
----
-
-## 既存データの移行（スプレッドシート → Supabase）
-
-1. スプレッドシートの「ユーザーマスター」を CSV エクスポート
-   （列: `user_id`, `user_name`, `hashed_password`）
-2. Supabase「Table Editor → users → Import data from CSV」で取り込み
-3. 「利用ログ」も残したい場合は `logs`（`user_id`, `user_name`, `action`, `created_at`）へ同様に取り込み
-
-ハッシュ方式（SHA-256）は GAS 版と同一のため、**既存ユーザーのパスワードはそのまま利用可能**です。
+```bash
+curl -X POST https://<owner-app>.vercel.app/api -H 'Content-Type: application/json' -d '{
+  "action":"register",
+  "orgId":"<組織ID>",
+  "userId":"MASTER",
+  "passwordHash":"<組織マスターPWのSHA256>",
+  "newUserId":"taro",
+  "newUserName":"山田太郎",
+  "newPasswordHash":"<新ユーザーPWのSHA256>"
+}'
+```
 
 ---
 
 ## セキュリティ補足
 
-- `service_role` キーと `MASTER_PASS_HASH` は Vercel 環境変数のみに保持し、クライアントには一切埋め込みません。
-- パスワードは従来同様クライアントで SHA-256 化して送信します（既存資産との互換のため）。
-  より堅牢にする場合は「平文をHTTPS送信 → サーバーで argon2/bcrypt」への変更、または Supabase Auth の採用を検討してください（クライアント改修が必要）。
+- `service_role` キーは Vercel 環境変数のみに保持し、クライアントには一切埋め込みません。
+  組織マスターのハッシュは DB（`organizations`）にのみ保存されます。
+- データは `org_id` でテナント分離されます（API は必ず `org_id` でスコープ）。
+- 組織作成は既定で公開です。乱立を防ぐには `SIGNUP_CODE` を設定してください。
+- パスワードはクライアントで SHA-256 化して送信します。より堅牢にする場合は
+  「平文を HTTPS 送信 → サーバーで argon2/bcrypt」や Supabase Auth の採用を検討してください（クライアント改修が必要）。

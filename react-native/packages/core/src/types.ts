@@ -19,6 +19,13 @@ export interface BaseResult {
 export interface LoginResult extends BaseResult {
   userId?: string;
   userName?: string;
+  orgId?: string;
+  orgName?: string;
+}
+
+export interface CreateOrgResult extends BaseResult {
+  orgId?: string;
+  orgName?: string;
 }
 
 export interface RequestApprovalResult extends BaseResult {

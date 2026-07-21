@@ -1,59 +1,67 @@
 // =====================================================
-// PC Login Control — 管理コンソール（Web GUI）
-//   同一オリジンの /api（Vercel）を叩いて、導入状態の確認・
-//   マスターPWハッシュ生成・DB初期化ガイド・ユーザー管理・
-//   ログ閲覧・承認をブラウザだけで行います。
+// PC Login Control — 管理コンソール（Web GUI・マルチテナント）
+//   導入者は「組織を作成」→ 組織ID を取得 → 自組織のユーザー/ログ/承認を管理。
+//   Supabase / Vercel の操作は不要（オーナーの初回セットアップのみ）。
 // =====================================================
 'use strict';
 
-// supabase/schema.sql と同一（DB初期化ガイド表示用）
+// supabase/schema.sql と同一（オーナーのDB初期化ガイド表示用）
 var SCHEMA_SQL = [
-  '-- PC Login Control — Supabase スキーマ',
+  '-- PC Login Control — Supabase スキーマ（マルチテナント）',
+  'create table if not exists public.organizations (',
+  '  org_id           uuid primary key default gen_random_uuid(),',
+  '  name             text not null,',
+  '  master_pass_hash text not null,',
+  '  created_at       timestamptz not null default now()',
+  ');',
+  '',
   'create table if not exists public.users (',
-  '  user_id         text primary key,',
+  '  org_id          uuid not null references public.organizations(org_id) on delete cascade,',
+  '  user_id         text not null,',
   '  user_name       text not null default \'\',',
   '  hashed_password text not null,',
   '  created_at      timestamptz not null default now(),',
-  '  updated_at      timestamptz not null default now()',
+  '  updated_at      timestamptz not null default now(),',
+  '  primary key (org_id, user_id)',
   ');',
   '',
   'create table if not exists public.logs (',
   '  id         bigint generated always as identity primary key,',
+  '  org_id     uuid not null references public.organizations(org_id) on delete cascade,',
   '  user_id    text not null,',
   '  user_name  text not null default \'\',',
   '  action     text not null,',
   '  created_at timestamptz not null default now()',
   ');',
-  'create index if not exists logs_user_id_idx   on public.logs (user_id);',
-  'create index if not exists logs_created_at_idx on public.logs (created_at desc);',
+  'create index if not exists logs_org_created_idx on public.logs (org_id, created_at desc);',
   '',
   'create table if not exists public.approval_requests (',
   '  request_id   uuid primary key default gen_random_uuid(),',
+  '  org_id       uuid not null references public.organizations(org_id) on delete cascade,',
   '  user_id      text not null,',
   '  user_name    text not null default \'\',',
   '  device_name  text not null default \'PC\',',
   '  status       text not null default \'pending\'',
-  '               check (status in (\'pending\', \'approved\', \'denied\', \'expired\')),',
+  '               check (status in (\'pending\',\'approved\',\'denied\',\'expired\')),',
   '  created_at   timestamptz not null default now(),',
   '  responded_at timestamptz',
   ');',
-  'create index if not exists approval_requests_user_status_idx on public.approval_requests (user_id, status);',
-  'create index if not exists approval_requests_created_at_idx  on public.approval_requests (created_at desc);',
+  'create index if not exists approval_requests_org_idx on public.approval_requests (org_id, status, created_at desc);',
   '',
+  'alter table public.organizations     enable row level security;',
   'alter table public.users             enable row level security;',
   'alter table public.logs              enable row level security;',
   'alter table public.approval_requests enable row level security;',
 ].join('\n');
 
 // ---------- 状態 ----------
-var session = null; // { userId:'MASTER', passwordHash }
+var session = null; // { orgId, orgName, passwordHash }
 
 function $(id) { return document.getElementById(id); }
 
 function getApiBase() {
   var saved = localStorage.getItem('pclc.apiBase');
   if (saved) return saved;
-  // 同一オリジン配信時は相対 /api
   return (location.origin && location.origin !== 'null') ? location.origin + '/api' : '/api';
 }
 
@@ -68,10 +76,12 @@ async function api(payload) {
   catch (e) { throw new Error('レスポンス解析に失敗: ' + text.slice(0, 160)); }
 }
 
+// 組織スコープ + マスター資格でのAPI呼び出し
 function authCall(action, extra) {
   if (!session) return Promise.reject(new Error('未ログインです'));
-  var payload = Object.assign({ action: action, userId: session.userId, passwordHash: session.passwordHash }, extra || {});
-  return api(payload);
+  return api(Object.assign({
+    action: action, orgId: session.orgId, userId: 'MASTER', passwordHash: session.passwordHash,
+  }, extra || {}));
 }
 
 function esc(s) {
@@ -84,91 +94,112 @@ function fmtTime(iso) {
   if (isNaN(d.getTime())) return esc(iso);
   return d.toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
-
-// ---------- ① 導入状態 ----------
-function setDot(id, state) {
-  var el = $(id);
-  el.className = 'dot' + (state ? ' ' + state : '');
+function showMsg(el, text, kind) {
+  el.textContent = text; el.className = 'msg ' + (kind || ''); el.classList.remove('hidden');
 }
+
+// ---------- 導入状態（オーナー向け） ----------
+function setDot(id, state) { $(id).className = 'dot' + (state ? ' ' + state : ''); }
 async function refreshHealth() {
   $('healthMsg').textContent = '確認中…';
   try {
     var r = await api({ action: 'health' });
     setDot('dotApi', 'ok');
     setDot('dotEnv', r.envConfigured ? 'ok' : 'bad');
-    setDot('dotMaster', r.masterConfigured ? 'ok' : 'warn');
     setDot('dotTables', r.tablesReady ? 'ok' : (r.envConfigured ? 'warn' : 'bad'));
+    if (r.signupCodeRequired) $('signupCodeRow').classList.remove('hidden');
     var notes = [];
-    if (!r.envConfigured) notes.push('Vercel の環境変数 SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY を設定してください。');
-    if (!r.masterConfigured) notes.push('MASTER_PASS_HASH を設定してください（②で生成）。');
-    if (r.envConfigured && !r.tablesReady) notes.push('DBテーブルが未作成です（③のSQLを実行）。');
+    if (!r.envConfigured) notes.push('環境変数 SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY を設定してください。');
+    if (r.envConfigured && !r.tablesReady) notes.push('DBテーブルが未作成です（スキーマSQLを実行）。');
     if (r.dbError) notes.push('DB: ' + r.dbError);
     $('healthMsg').textContent = notes.length ? notes.join(' ') : 'すべて正常です。';
   } catch (e) {
-    setDot('dotApi', 'bad');
-    setDot('dotEnv', ''); setDot('dotMaster', ''); setDot('dotTables', '');
+    setDot('dotApi', 'bad'); setDot('dotEnv', ''); setDot('dotTables', '');
     $('healthMsg').textContent = 'API に接続できません（' + e.message + '）。⚙️ で URL を確認してください。';
   }
 }
 
-// ---------- ② ハッシュ生成 ----------
-function genHash() {
-  var pw = $('masterPlain').value;
-  if (!pw) { return; }
-  var hex = sha256(pw);
-  $('hashValue').textContent = hex;
-  $('hashOut').classList.remove('hidden');
+// ---------- 組織を作成 ----------
+async function createOrg() {
+  var name = $('orgName').value.trim();
+  var pw = $('signupMasterPw').value;
+  var code = $('signupCode').value.trim();
+  var err = $('signupError'); err.classList.add('hidden');
+  if (!name) { showMsg(err, '組織名を入力してください。', 'error'); return; }
+  if (!pw) { showMsg(err, '管理者パスワードを入力してください。', 'error'); return; }
+
+  $('createOrgBtn').disabled = true;
+  try {
+    var payload = { action: 'createOrg', orgName: name, masterPasswordHash: sha256(pw) };
+    if (code) payload.signupCode = code;
+    var r = await api(payload);
+    if (r.success && r.orgId) {
+      $('orgIdValue').textContent = r.orgId;
+      $('orgResult').classList.remove('hidden');
+      // ログインフォームに引き継ぎ
+      $('orgIdInput').value = r.orgId;
+      $('loginMasterPw').value = pw;
+      $('signupMasterPw').value = '';
+      $('loginMasterPw').focus();
+    } else {
+      showMsg(err, r.message || '組織の作成に失敗しました。', 'error');
+    }
+  } catch (e) {
+    showMsg(err, '通信エラー: ' + e.message, 'error');
+  } finally {
+    $('createOrgBtn').disabled = false;
+  }
 }
 
-// ---------- ④ ログイン ----------
+// ---------- 組織にログイン ----------
 async function doLogin() {
-  var pw = $('masterPw').value;
-  var errEl = $('loginError');
-  errEl.classList.add('hidden');
-  if (!pw) { showMsg(errEl, 'マスターパスワードを入力してください。', 'error'); return; }
+  var orgId = $('orgIdInput').value.trim();
+  var pw = $('loginMasterPw').value;
+  var err = $('loginError'); err.classList.add('hidden');
+  if (!orgId) { showMsg(err, '組織IDを入力してください。', 'error'); return; }
+  if (!pw) { showMsg(err, '管理者パスワードを入力してください。', 'error'); return; }
 
   var hash = sha256(pw);
   $('loginBtn').disabled = true;
   try {
-    var r = await api({ action: 'login', userId: 'MASTER', passwordHash: hash });
+    var r = await api({ action: 'login', orgId: orgId, userId: 'MASTER', passwordHash: hash });
     if (r.success && r.userId === 'MASTER') {
-      session = { userId: 'MASTER', passwordHash: hash };
-      sessionStorage.setItem('pclc.session', JSON.stringify(session));
-      $('masterPw').value = '';
+      session = { orgId: r.orgId || orgId, orgName: r.orgName || '', passwordHash: hash };
+      $('loginMasterPw').value = '';
       applyLoggedIn();
     } else if (r.success) {
-      showMsg(errEl, '管理者(マスター)権限が必要です。', 'error');
+      showMsg(err, '管理者パスワードが一致しません。', 'error');
     } else {
-      showMsg(errEl, r.message || 'ログインに失敗しました。', 'error');
+      showMsg(err, r.message || 'ログインに失敗しました。', 'error');
     }
   } catch (e) {
-    showMsg(errEl, '通信エラー: ' + e.message, 'error');
+    showMsg(err, '通信エラー: ' + e.message, 'error');
   } finally {
     $('loginBtn').disabled = false;
   }
 }
 function doLogout() {
   session = null;
-  sessionStorage.removeItem('pclc.session');
   $('adminArea').classList.add('hidden');
-  $('loginCard').classList.remove('hidden');
+  $('authArea').classList.remove('hidden');
   $('logoutBtn').classList.add('hidden');
   $('sessionBadge').classList.add('hidden');
 }
 function applyLoggedIn() {
-  $('loginCard').classList.add('hidden');
+  $('authArea').classList.add('hidden');
   $('adminArea').classList.remove('hidden');
   $('logoutBtn').classList.remove('hidden');
+  $('orgBarName').textContent = session.orgName || '(組織)';
+  $('orgBarId').textContent = session.orgId;
   var badge = $('sessionBadge');
-  badge.textContent = 'マスターでログイン中';
+  badge.textContent = (session.orgName || '組織') + ' · マスター';
   badge.classList.remove('hidden');
-  loadUsers();
+  switchTab('users');
 }
 
 // ---------- ユーザー ----------
 async function loadUsers() {
-  var ul = $('userList');
-  ul.innerHTML = '<li class="empty">読み込み中…</li>';
+  var ul = $('userList'); ul.innerHTML = '<li class="empty">読み込み中…</li>';
   try {
     var r = await authCall('listUsers');
     if (!r.success) { ul.innerHTML = '<li class="empty">' + esc(r.message) + '</li>'; return; }
@@ -184,9 +215,7 @@ async function loadUsers() {
       li.querySelector('.danger-btn').addEventListener('click', function () { deleteUser(u.userId); });
       ul.appendChild(li);
     });
-  } catch (e) {
-    ul.innerHTML = '<li class="empty">' + esc(e.message) + '</li>';
-  }
+  } catch (e) { ul.innerHTML = '<li class="empty">' + esc(e.message) + '</li>'; }
 }
 async function addUser() {
   var id = $('newUserId').value.trim();
@@ -200,9 +229,7 @@ async function addUser() {
       showMsg(msg, 'ユーザー「' + id + '」を登録しました。', 'ok');
       $('newUserId').value = ''; $('newUserName').value = ''; $('newUserPw').value = '';
       loadUsers();
-    } else {
-      showMsg(msg, r.message || '登録に失敗しました。', 'error');
-    }
+    } else { showMsg(msg, r.message || '登録に失敗しました。', 'error'); }
   } catch (e) { showMsg(msg, '通信エラー: ' + e.message, 'error'); }
 }
 async function deleteUser(userId) {
@@ -217,8 +244,7 @@ async function deleteUser(userId) {
 
 // ---------- ログ ----------
 async function loadLogs() {
-  var ul = $('logList');
-  ul.innerHTML = '<li class="empty">読み込み中…</li>';
+  var ul = $('logList'); ul.innerHTML = '<li class="empty">読み込み中…</li>';
   try {
     var r = await authCall('getLogs', { limit: 100 });
     var logs = (r.success && r.logs) ? r.logs : [];
@@ -243,8 +269,7 @@ function actionLabel(a) {
 
 // ---------- 承認 ----------
 async function loadApprovals() {
-  var ul = $('approvalList');
-  ul.innerHTML = '<li class="empty">読み込み中…</li>';
+  var ul = $('approvalList'); ul.innerHTML = '<li class="empty">読み込み中…</li>';
   try {
     var r = await authCall('listRequests');
     var reqs = (r.success && r.requests) ? r.requests : [];
@@ -263,18 +288,12 @@ async function loadApprovals() {
   } catch (e) { ul.innerHTML = '<li class="empty">' + esc(e.message) + '</li>'; }
 }
 async function respond(requestId, decision) {
-  try {
-    await authCall('respondRequest', { requestId: requestId, decision: decision });
-  } catch (e) { /* 表示は再読込に任せる */ }
+  try { await authCall('respondRequest', { requestId: requestId, decision: decision }); }
+  catch (e) { /* 再読込に任せる */ }
   loadApprovals();
 }
 
-// ---------- 共通UI ----------
-function showMsg(el, text, kind) {
-  el.textContent = text;
-  el.className = 'msg ' + (kind || '');
-  el.classList.remove('hidden');
-}
+// ---------- タブ ----------
 function switchTab(name) {
   ['users', 'logs', 'approvals'].forEach(function (t) {
     $('tab-' + t).classList.toggle('hidden', t !== name);
@@ -287,46 +306,7 @@ function switchTab(name) {
   if (name === 'approvals') loadApprovals();
 }
 
-// ---------- 初期化 ----------
-function init() {
-  $('schemaSql').textContent = SCHEMA_SQL;
-  $('apiUrl').value = localStorage.getItem('pclc.apiBase') || '';
-
-  $('settingsBtn').addEventListener('click', function () { $('settingsPanel').classList.toggle('hidden'); });
-  $('saveApiUrl').addEventListener('click', function () {
-    var v = $('apiUrl').value.trim();
-    if (v) localStorage.setItem('pclc.apiBase', v); else localStorage.removeItem('pclc.apiBase');
-    $('settingsPanel').classList.add('hidden');
-    refreshHealth();
-  });
-
-  $('refreshHealth').addEventListener('click', refreshHealth);
-  $('genHash').addEventListener('click', genHash);
-  $('masterPlain').addEventListener('keydown', function (e) { if (e.key === 'Enter') genHash(); });
-  $('copyHash').addEventListener('click', function () { copyText($('hashValue').textContent, this); });
-  $('copySql').addEventListener('click', function () { copyText(SCHEMA_SQL, this); });
-
-  $('loginBtn').addEventListener('click', doLogin);
-  $('masterPw').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
-  $('logoutBtn').addEventListener('click', doLogout);
-
-  $('addUser').addEventListener('click', addUser);
-  $('refreshUsers').addEventListener('click', loadUsers);
-  $('refreshLogs').addEventListener('click', loadLogs);
-  $('refreshApprovals').addEventListener('click', loadApprovals);
-  document.querySelectorAll('.tab').forEach(function (b) {
-    b.addEventListener('click', function () { switchTab(b.getAttribute('data-tab')); });
-  });
-
-  // セッション復元
-  var saved = sessionStorage.getItem('pclc.session');
-  if (saved) {
-    try { session = JSON.parse(saved); applyLoggedIn(); } catch (e) { /* ignore */ }
-  }
-
-  refreshHealth();
-}
-
+// ---------- コピー ----------
 function copyText(text, btn) {
   var done = function () {
     if (!btn) return;
@@ -343,6 +323,40 @@ function fallbackCopy(text, done) {
   document.body.appendChild(ta); ta.select();
   try { document.execCommand('copy'); } catch (e) { /* ignore */ }
   document.body.removeChild(ta); done();
+}
+
+// ---------- 初期化 ----------
+function init() {
+  $('schemaSql').textContent = SCHEMA_SQL;
+  $('apiUrl').value = localStorage.getItem('pclc.apiBase') || '';
+
+  $('settingsBtn').addEventListener('click', function () { $('settingsPanel').classList.toggle('hidden'); });
+  $('saveApiUrl').addEventListener('click', function () {
+    var v = $('apiUrl').value.trim();
+    if (v) localStorage.setItem('pclc.apiBase', v); else localStorage.removeItem('pclc.apiBase');
+    $('settingsPanel').classList.add('hidden');
+    refreshHealth();
+  });
+
+  $('createOrgBtn').addEventListener('click', createOrg);
+  $('copyOrgId').addEventListener('click', function () { copyText($('orgIdValue').textContent, this); });
+  $('loginBtn').addEventListener('click', doLogin);
+  $('loginMasterPw').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
+  $('logoutBtn').addEventListener('click', doLogout);
+  $('copyOrgBarId').addEventListener('click', function () { copyText($('orgBarId').textContent, this); });
+
+  $('refreshHealth').addEventListener('click', refreshHealth);
+  $('copySql').addEventListener('click', function () { copyText(SCHEMA_SQL, this); });
+
+  $('addUser').addEventListener('click', addUser);
+  $('refreshUsers').addEventListener('click', loadUsers);
+  $('refreshLogs').addEventListener('click', loadLogs);
+  $('refreshApprovals').addEventListener('click', loadApprovals);
+  document.querySelectorAll('.tab').forEach(function (b) {
+    b.addEventListener('click', function () { switchTab(b.getAttribute('data-tab')); });
+  });
+
+  refreshHealth();
 }
 
 document.addEventListener('DOMContentLoaded', init);

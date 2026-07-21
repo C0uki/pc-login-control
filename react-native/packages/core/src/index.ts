@@ -6,6 +6,9 @@ export * from './types';
 export * from './config';
 export { hashPassword } from './crypto';
 export {
+  createOrg,
+  setOrgId,
+  getOrgId,
   login,
   loginWithHash,
   logout,

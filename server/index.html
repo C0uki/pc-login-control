@@ -23,75 +23,71 @@
       <input id="apiUrl" type="text" placeholder="https://your-app.vercel.app/api" spellcheck="false" />
       <button id="saveApiUrl" class="primary-btn">保存</button>
     </div>
-    <p class="hint">このコンソールを Vercel から開いた場合は空欄（同一オリジンの <code>/api</code>）でOK。
-      ローカルで開いた場合はデプロイ後の <code>…/api</code> を入力してください。</p>
+    <p class="hint">通常は空欄でOK（このページと同一オリジンの <code>/api</code> を使用）。
+      別の場所から開く場合のみ、API の URL を入力してください。</p>
   </section>
 
   <main class="container">
 
-    <!-- 導入状態 / セットアップ -->
-    <section class="card">
-      <div class="card-head">
-        <h2>① 導入状態</h2>
-        <button id="refreshHealth" class="ghost-btn">再確認</button>
-      </div>
-      <div id="healthGrid" class="health-grid">
-        <div class="health-item"><span class="dot" id="dotApi"></span>API 接続</div>
-        <div class="health-item"><span class="dot" id="dotEnv"></span>環境変数(Supabase)</div>
-        <div class="health-item"><span class="dot" id="dotMaster"></span>マスターPW</div>
-        <div class="health-item"><span class="dot" id="dotTables"></span>DBテーブル</div>
-      </div>
-      <p id="healthMsg" class="hint"></p>
-    </section>
+    <!-- ================= ログイン前（導入者向け） ================= -->
+    <section id="authArea">
+      <p class="lead">Supabase や Vercel の操作は不要です。<b>組織を作成</b>して、あなたの組織の
+        ユーザー・ログ・承認をこの画面から管理できます。</p>
 
-    <!-- マスターPWハッシュ生成 -->
-    <section class="card">
-      <h2>② マスターパスワードのハッシュ生成</h2>
-      <p class="hint">生成した値を Vercel の環境変数 <code>MASTER_PASS_HASH</code> に設定してください（デプロイ時に入力）。</p>
-      <div class="row">
-        <input id="masterPlain" type="text" placeholder="マスターパスワードを入力" autocomplete="off" spellcheck="false" />
-        <button id="genHash" class="primary-btn">生成</button>
+      <!-- 組織を作成 -->
+      <div class="card">
+        <h2>組織を作成（はじめての方）</h2>
+        <p class="hint">組織名と管理者（マスター）パスワードを決めるだけ。作成後に表示される
+          <b>組織ID</b> を、PC・モバイルアプリに設定します。</p>
+        <div id="signupError" class="msg error hidden"></div>
+        <div class="form-grid">
+          <input id="orgName" type="text" placeholder="組織名（例: ○○事務所）" />
+          <input id="signupMasterPw" type="password" placeholder="管理者パスワード" autocomplete="new-password" />
+          <div id="signupCodeRow" class="hidden" style="grid-column:1/-1">
+            <input id="signupCode" type="text" placeholder="サインアップコード（オーナーから配布）" spellcheck="false" style="width:100%" />
+          </div>
+          <button id="createOrgBtn" class="primary-btn">組織を作成</button>
+        </div>
+        <div id="orgResult" class="org-result hidden">
+          <div class="org-result-head">✅ 組織を作成しました。次のIDをアプリに設定してください。</div>
+          <div class="hash-out">
+            <code id="orgIdValue"></code>
+            <button id="copyOrgId" class="ghost-btn">コピー</button>
+          </div>
+          <p class="hint">この組織IDと管理者パスワードで、下の「組織にログイン」から管理できます。</p>
+        </div>
       </div>
-      <div id="hashOut" class="hash-out hidden">
-        <code id="hashValue"></code>
-        <button id="copyHash" class="ghost-btn">コピー</button>
-      </div>
-    </section>
 
-    <!-- DB初期化 -->
-    <section class="card">
-      <div class="card-head">
-        <h2>③ データベース初期化</h2>
-        <button id="copySql" class="ghost-btn">SQLをコピー</button>
-      </div>
-      <p class="hint">Supabase の「SQL Editor」に貼り付けて実行してください（初回のみ）。実行後「①再確認」で
-        <b>DBテーブル</b> が緑になれば完了です。</p>
-      <details>
-        <summary>スキーマSQLを表示</summary>
-        <pre id="schemaSql" class="sql"></pre>
-      </details>
-    </section>
-
-    <!-- ログイン -->
-    <section id="loginCard" class="card">
-      <h2>④ 管理者ログイン</h2>
-      <p class="hint">マスターパスワードでログインすると、ユーザー管理・ログ・承認が利用できます。</p>
-      <div id="loginError" class="msg error hidden"></div>
-      <div class="row">
-        <input id="masterPw" type="password" placeholder="マスターパスワード" autocomplete="off" />
-        <button id="loginBtn" class="primary-btn">ログイン</button>
+      <!-- 組織にログイン -->
+      <div class="card">
+        <h2>組織にログイン</h2>
+        <p class="hint">作成済みの組織ID と 管理者パスワードでログインします。</p>
+        <div id="loginError" class="msg error hidden"></div>
+        <div class="form-grid">
+          <input id="orgIdInput" type="text" placeholder="組織ID" spellcheck="false" />
+          <input id="loginMasterPw" type="password" placeholder="管理者パスワード" autocomplete="off" />
+          <button id="loginBtn" class="primary-btn">ログイン</button>
+        </div>
       </div>
     </section>
 
-    <!-- 管理タブ -->
+    <!-- ================= ログイン後（管理） ================= -->
     <section id="adminArea" class="hidden">
+      <div class="org-bar">
+        <div>
+          <div class="org-bar-name" id="orgBarName"></div>
+          <div class="org-bar-id">組織ID: <code id="orgBarId"></code>
+            <button id="copyOrgBarId" class="link-btn">コピー</button>
+          </div>
+        </div>
+      </div>
+
       <nav class="tabs">
         <button class="tab active" data-tab="users">ユーザー</button>
         <button class="tab" data-tab="logs">利用ログ</button>
         <button class="tab" data-tab="approvals">承認</button>
       </nav>
 
-      <!-- ユーザー -->
       <div id="tab-users" class="tab-panel">
         <div class="card">
           <h3>ユーザー登録</h3>
@@ -112,7 +108,6 @@
         </div>
       </div>
 
-      <!-- ログ -->
       <div id="tab-logs" class="tab-panel hidden">
         <div class="card">
           <div class="card-head">
@@ -123,7 +118,6 @@
         </div>
       </div>
 
-      <!-- 承認 -->
       <div id="tab-approvals" class="tab-panel hidden">
         <div class="card">
           <div class="card-head">
@@ -135,7 +129,37 @@
       </div>
     </section>
 
-    <footer class="foot">PC Login Control · Supabase + Vercel</footer>
+    <!-- ================= オーナー向け初期セットアップ ================= -->
+    <details class="owner">
+      <summary>オーナー向け：初回セットアップ（Supabase / Vercel）</summary>
+      <div class="card">
+        <div class="card-head">
+          <h3>導入状態</h3>
+          <button id="refreshHealth" class="ghost-btn">再確認</button>
+        </div>
+        <div class="health-grid">
+          <div class="health-item"><span class="dot" id="dotApi"></span>API 接続</div>
+          <div class="health-item"><span class="dot" id="dotEnv"></span>環境変数(Supabase)</div>
+          <div class="health-item"><span class="dot" id="dotTables"></span>DBテーブル</div>
+        </div>
+        <p id="healthMsg" class="hint"></p>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <h3>データベース初期化</h3>
+          <button id="copySql" class="ghost-btn">SQLをコピー</button>
+        </div>
+        <p class="hint">Supabase の「SQL Editor」で実行（初回のみ）。実行後「再確認」で
+          <b>DBテーブル</b> が緑になれば完了です。環境変数は
+          <code>SUPABASE_URL</code> / <code>SUPABASE_SERVICE_ROLE_KEY</code>（任意で <code>SIGNUP_CODE</code>）。</p>
+        <details>
+          <summary>スキーマSQLを表示</summary>
+          <pre id="schemaSql" class="sql"></pre>
+        </details>
+      </div>
+    </details>
+
+    <footer class="foot">PC Login Control · マルチテナント SaaS（Supabase + Vercel）</footer>
   </main>
 
   <script src="sha256.js"></script>

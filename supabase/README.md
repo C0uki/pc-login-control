@@ -1,12 +1,13 @@
-# Supabase（データベース）
+# Supabase（データベース・マルチテナント）
 
-PC Login Control のデータストア。GAS 版のスプレッドシート（ユーザーマスター / 利用ログ / 認証リクエスト）を PostgreSQL テーブルへ移行したものです。
+PC Login Control のデータストア。オーナーが1つ運用し、各組織（`org_id`）でデータを分離します。
 
-| テーブル | 対応（旧スプレッドシート） | 主なカラム |
-|----------|---------------------------|-----------|
-| `users` | ユーザーマスター | `user_id`(PK), `user_name`, `hashed_password` |
-| `logs` | 利用ログ | `user_id`, `user_name`, `action`, `created_at` |
-| `approval_requests` | 認証リクエスト | `request_id`(uuid), `user_id`, `device_name`, `status`, `created_at`, `responded_at` |
+| テーブル | 役割 | 主なカラム |
+|----------|------|-----------|
+| `organizations` | 組織（テナント） | `org_id`(PK/uuid), `name`, `master_pass_hash` |
+| `users` | ユーザーマスター | `(org_id, user_id)`(PK), `user_name`, `hashed_password` |
+| `logs` | 利用ログ | `org_id`, `user_id`, `user_name`, `action`, `created_at` |
+| `approval_requests` | 認証リクエスト | `request_id`(uuid), `org_id`, `user_id`, `device_name`, `status`, `created_at`, `responded_at` |
 
 ## 適用方法
 
