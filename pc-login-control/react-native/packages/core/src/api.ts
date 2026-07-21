@@ -1,12 +1,10 @@
 // =====================================================
-// GAS API クライアント
-//   fetch ベース（RN の fetch はリダイレクトを自動追従するため
-//   Electron 版のような手動リダイレクト処理は不要）。
-//   Content-Type は text/plain として送信し、GAS 側は
-//   e.postData.contents を JSON.parse する。
+// API クライアント（Vercel + Supabase バックエンド）
+//   fetch ベース。GAS と同じアクションベースの契約なので、
+//   バックエンド移行後も API_URL を差し替えるだけで動作する。
 // =====================================================
 
-import { GAS_URL, REQUEST_TIMEOUT_MS, ONLINE_CHECK_URL } from './config';
+import { API_URL, REQUEST_TIMEOUT_MS, ONLINE_CHECK_URL } from './config';
 import { hashPassword } from './crypto';
 import type {
   LoginResult,
@@ -16,17 +14,18 @@ import type {
   ListRequestsResult,
   RespondRequestResult,
   GetLogsResult,
+  RegisterResult,
 } from './types';
 
-async function postToGAS<T extends BaseResult>(
+async function postToApi<T extends BaseResult>(
   payload: Record<string, unknown>,
 ): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const res = await fetch(GAS_URL, {
+    const res = await fetch(API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
@@ -50,7 +49,7 @@ async function postToGAS<T extends BaseResult>(
 
 /** ID + 平文パスワードでログイン（ハッシュ化はこの中で実施） */
 export function login(userId: string, password: string): Promise<LoginResult> {
-  return postToGAS<LoginResult>({
+  return postToApi<LoginResult>({
     action: 'login',
     userId,
     passwordHash: hashPassword(password),
@@ -59,12 +58,12 @@ export function login(userId: string, password: string): Promise<LoginResult> {
 
 /** 事前にハッシュ化済みの資格情報でログイン（保存済み資格情報の再利用など） */
 export function loginWithHash(userId: string, passwordHash: string): Promise<LoginResult> {
-  return postToGAS<LoginResult>({ action: 'login', userId, passwordHash });
+  return postToApi<LoginResult>({ action: 'login', userId, passwordHash });
 }
 
 /** ログアウト記録 */
 export function logout(userId: string, userName: string): Promise<BaseResult> {
-  return postToGAS<BaseResult>({ action: 'logout', userId, userName });
+  return postToApi<BaseResult>({ action: 'logout', userId, userName });
 }
 
 // ------- モバイル承認フロー（PC 側） -------
@@ -74,7 +73,7 @@ export function requestApproval(
   userId: string,
   deviceName: string,
 ): Promise<RequestApprovalResult> {
-  return postToGAS<RequestApprovalResult>({
+  return postToApi<RequestApprovalResult>({
     action: 'requestApproval',
     userId,
     deviceName,
@@ -83,7 +82,7 @@ export function requestApproval(
 
 /** PC: 承認状態を確認 */
 export function checkApproval(requestId: string): Promise<CheckApprovalResult> {
-  return postToGAS<CheckApprovalResult>({ action: 'checkApproval', requestId });
+  return postToApi<CheckApprovalResult>({ action: 'checkApproval', requestId });
 }
 
 // ------- モバイル承認フロー（モバイル側） -------
@@ -93,7 +92,7 @@ export function listRequests(
   userId: string,
   passwordHash: string,
 ): Promise<ListRequestsResult> {
-  return postToGAS<ListRequestsResult>({
+  return postToApi<ListRequestsResult>({
     action: 'listRequests',
     userId,
     passwordHash,
@@ -107,7 +106,7 @@ export function respondRequest(
   requestId: string,
   decision: 'approve' | 'deny',
 ): Promise<RespondRequestResult> {
-  return postToGAS<RespondRequestResult>({
+  return postToApi<RespondRequestResult>({
     action: 'respondRequest',
     userId,
     passwordHash,
@@ -124,7 +123,28 @@ export function getLogs(
   passwordHash: string,
   limit = 50,
 ): Promise<GetLogsResult> {
-  return postToGAS<GetLogsResult>({ action: 'getLogs', userId, passwordHash, limit });
+  return postToApi<GetLogsResult>({ action: 'getLogs', userId, passwordHash, limit });
+}
+
+// ------- ユーザー登録（マスター権限） -------
+
+/**
+ * マスター権限で新規ユーザーを登録 / 更新（Google フォームの置き換え）。
+ * @param admin   マスターの資格情報（userId は 'MASTER'、passwordHash はマスターPWのハッシュ）
+ * @param newUser 登録するユーザー（password は平文。ここでハッシュ化して送信）
+ */
+export function register(
+  admin: { userId: string; passwordHash: string },
+  newUser: { userId: string; userName: string; password: string },
+): Promise<RegisterResult> {
+  return postToApi<RegisterResult>({
+    action: 'register',
+    userId: admin.userId,
+    passwordHash: admin.passwordHash,
+    newUserId: newUser.userId,
+    newUserName: newUser.userName,
+    newPasswordHash: hashPassword(newUser.password),
+  });
 }
 
 // ------- オンライン判定 -------

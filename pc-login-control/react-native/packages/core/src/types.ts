@@ -60,3 +60,7 @@ export interface LogEntry {
 export interface GetLogsResult extends BaseResult {
   logs?: LogEntry[];
 }
+
+export interface RegisterResult extends BaseResult {
+  userId?: string;
+}
