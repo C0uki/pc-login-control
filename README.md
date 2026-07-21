@@ -40,6 +40,67 @@
 
 ---
 
+## 導入・運用フロー
+
+導入（セットアップ）と、日々の運用（利用者ログイン・管理者）の流れです。
+
+### 1. 導入（セットアップ）
+
+コード編集なし・ブラウザ中心。①〜⑤は Web 管理コンソールの手順に対応します。
+
+```mermaid
+flowchart TD
+  P["マスターPWの SHA-256 を用意<br/>（管理コンソール② / sha256sum）"] --> C["環境変数を入力<br/>SUPABASE_URL / SERVICE_ROLE_KEY / MASTER_PASS_HASH"]
+  A["Supabase プロジェクト作成<br/>URL・service_role キー取得"] --> B["Vercel へデプロイ<br/>Deploy to Vercel ボタン"]
+  B --> C
+  C --> D["デプロイ URL / を開く（= Web 管理コンソール）"]
+  D --> E{"① 導入状態<br/>DBテーブルは作成済み?"}
+  E -->|いいえ| F["③ スキーマSQLをコピー<br/>Supabase SQL Editor で実行"]
+  F --> E
+  E -->|はい| G["④ マスターでログイン"]
+  G --> H["⑤ ユーザーを登録"]
+  H --> I["クライアント設定<br/>config.ts の API_URL をデプロイURLに"]
+  I --> J["PC(Windows)・モバイルアプリを<br/>ビルド／配布"]
+  J --> K(["導入完了 ✅"])
+```
+
+### 2. 運用 — 利用者のログイン
+
+「直接ログイン」と「スマホ承認」の 2 経路。どちらも Vercel API 経由で Supabase に記録されます。
+
+```mermaid
+flowchart TD
+  A(["PC 起動"]) --> B["キオスク ログイン画面"]
+  B --> C{"ログイン方法"}
+  C -->|直接| D["ID＋パスワードを入力"]
+  D --> E["/api: login → Supabase 照合"]
+  E --> F{"認証成功?"}
+  F -->|いいえ| B
+  C -->|スマホ承認| H["PCでID入力→「スマホで承認」<br/>/api: requestApproval"]
+  H --> I["モバイルアプリ「承認」タブに表示"]
+  I --> J{"承認 / 拒否"}
+  J -->|拒否| B
+  J -->|承認| K["/api: respondRequest<br/>PCが checkApproval でポーリング"]
+  F -->|はい| G["キオスク解除・ログイン記録"]
+  K --> G
+  G --> M["PC を利用"]
+  M --> N(["ログアウト / シャットダウン<br/>/api: logout 記録"])
+```
+
+### 3. 運用 — 管理者
+
+デプロイ URL の `/`（Web 管理コンソール）から、随時ブラウザだけで運用できます。
+
+```mermaid
+flowchart LR
+  A(["管理者"]) --> B["Web 管理コンソール /<br/>マスターでログイン"]
+  B --> U["ユーザー管理<br/>登録 / 更新 / 削除"]
+  B --> L["利用ログ閲覧<br/>login / logout 履歴"]
+  B --> P["承認<br/>PCのログイン要求を承認/拒否"]
+```
+
+---
+
 ## STEP 1: Supabase（データベース）
 
 1. [Supabase](https://supabase.com/) で新規プロジェクトを作成
