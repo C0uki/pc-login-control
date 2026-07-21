@@ -7,6 +7,19 @@
 > - バックエンド: [`server/README.md`](server/README.md) / [`supabase/README.md`](supabase/README.md)
 > - 旧 Electron 版は [`electron/`](electron/)、旧 GAS 版は [`gas/`](gas/) に参照用として残しています。
 
+## 🚀 かんたん導入（GUI・コード編集不要）
+
+1. **Vercel にワンクリックデプロイ**（環境変数は画面で入力）
+
+   [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FC0uki%2Fpc-login-control&root-directory=server&env=SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,MASTER_PASS_HASH&project-name=pc-login-control&repository-name=pc-login-control)
+
+2. デプロイURL（`https://<app>.vercel.app/`）を開くと **Web 管理コンソール** が表示されます。
+   マスターPWハッシュ生成 → DB初期化SQLのコピー → 導入状態チェック → ユーザー登録/ログ/承認まで、
+   すべて**ブラウザだけ**で完結します（ビルド不要・どの環境でも動作）。
+
+詳細は [`server/README.md`](server/README.md#-かんたん導入gui-中心) を参照してください。
+以下は各コンポーネントの個別セットアップ手順です。
+
 ## 構成概要
 
 ```
@@ -135,9 +148,11 @@ pc-login-control/
 ├── supabase/                 ← ★ データベース（PostgreSQL）
 │   ├── schema.sql            ← テーブル / RLS 定義
 │   └── README.md
-├── server/                   ← ★ Vercel サーバーレスAPI（現行バックエンド）
+├── server/                   ← ★ Vercel サーバーレスAPI + 管理コンソール
 │   ├── api/index.ts          ← エンドポイント（POST /api）
 │   ├── lib/{handlers,auth,supabase,types}.ts
+│   ├── index.html            ← Web 管理コンソール（GUI・/ で配信）
+│   ├── app.js / styles.css / sha256.js
 │   └── README.md             ← Supabase + Vercel セットアップ
 ├── react-native/             ← ★ React Native 版（クライアント）
 │   ├── README.md

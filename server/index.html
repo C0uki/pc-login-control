@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PC Login Control — 管理コンソール</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🔐 PC Login Control <span>管理コンソール</span></div>
+    <div class="top-actions">
+      <span id="sessionBadge" class="badge hidden"></span>
+      <button id="settingsBtn" class="icon-btn" title="接続設定">⚙️</button>
+      <button id="logoutBtn" class="ghost-btn hidden">ログアウト</button>
+    </div>
+  </header>
+
+  <!-- 接続設定 -->
+  <section id="settingsPanel" class="panel hidden">
+    <label for="apiUrl">API エンドポイント URL</label>
+    <div class="row">
+      <input id="apiUrl" type="text" placeholder="https://your-app.vercel.app/api" spellcheck="false" />
+      <button id="saveApiUrl" class="primary-btn">保存</button>
+    </div>
+    <p class="hint">このコンソールを Vercel から開いた場合は空欄（同一オリジンの <code>/api</code>）でOK。
+      ローカルで開いた場合はデプロイ後の <code>…/api</code> を入力してください。</p>
+  </section>
+
+  <main class="container">
+
+    <!-- 導入状態 / セットアップ -->
+    <section class="card">
+      <div class="card-head">
+        <h2>① 導入状態</h2>
+        <button id="refreshHealth" class="ghost-btn">再確認</button>
+      </div>
+      <div id="healthGrid" class="health-grid">
+        <div class="health-item"><span class="dot" id="dotApi"></span>API 接続</div>
+        <div class="health-item"><span class="dot" id="dotEnv"></span>環境変数(Supabase)</div>
+        <div class="health-item"><span class="dot" id="dotMaster"></span>マスターPW</div>
+        <div class="health-item"><span class="dot" id="dotTables"></span>DBテーブル</div>
+      </div>
+      <p id="healthMsg" class="hint"></p>
+    </section>
+
+    <!-- マスターPWハッシュ生成 -->
+    <section class="card">
+      <h2>② マスターパスワードのハッシュ生成</h2>
+      <p class="hint">生成した値を Vercel の環境変数 <code>MASTER_PASS_HASH</code> に設定してください（デプロイ時に入力）。</p>
+      <div class="row">
+        <input id="masterPlain" type="text" placeholder="マスターパスワードを入力" autocomplete="off" spellcheck="false" />
+        <button id="genHash" class="primary-btn">生成</button>
+      </div>
+      <div id="hashOut" class="hash-out hidden">
+        <code id="hashValue"></code>
+        <button id="copyHash" class="ghost-btn">コピー</button>
+      </div>
+    </section>
+
+    <!-- DB初期化 -->
+    <section class="card">
+      <div class="card-head">
+        <h2>③ データベース初期化</h2>
+        <button id="copySql" class="ghost-btn">SQLをコピー</button>
+      </div>
+      <p class="hint">Supabase の「SQL Editor」に貼り付けて実行してください（初回のみ）。実行後「①再確認」で
+        <b>DBテーブル</b> が緑になれば完了です。</p>
+      <details>
+        <summary>スキーマSQLを表示</summary>
+        <pre id="schemaSql" class="sql"></pre>
+      </details>
+    </section>
+
+    <!-- ログイン -->
+    <section id="loginCard" class="card">
+      <h2>④ 管理者ログイン</h2>
+      <p class="hint">マスターパスワードでログインすると、ユーザー管理・ログ・承認が利用できます。</p>
+      <div id="loginError" class="msg error hidden"></div>
+      <div class="row">
+        <input id="masterPw" type="password" placeholder="マスターパスワード" autocomplete="off" />
+        <button id="loginBtn" class="primary-btn">ログイン</button>
+      </div>
+    </section>
+
+    <!-- 管理タブ -->
+    <section id="adminArea" class="hidden">
+      <nav class="tabs">
+        <button class="tab active" data-tab="users">ユーザー</button>
+        <button class="tab" data-tab="logs">利用ログ</button>
+        <button class="tab" data-tab="approvals">承認</button>
+      </nav>
+
+      <!-- ユーザー -->
+      <div id="tab-users" class="tab-panel">
+        <div class="card">
+          <h3>ユーザー登録</h3>
+          <div id="userMsg" class="msg hidden"></div>
+          <div class="form-grid">
+            <input id="newUserId" type="text" placeholder="ユーザーID" spellcheck="false" />
+            <input id="newUserName" type="text" placeholder="ユーザー名" />
+            <input id="newUserPw" type="text" placeholder="初期パスワード" spellcheck="false" />
+            <button id="addUser" class="primary-btn">登録 / 更新</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <h3>登録ユーザー</h3>
+            <button id="refreshUsers" class="ghost-btn">更新</button>
+          </div>
+          <ul id="userList" class="list"></ul>
+        </div>
+      </div>
+
+      <!-- ログ -->
+      <div id="tab-logs" class="tab-panel hidden">
+        <div class="card">
+          <div class="card-head">
+            <h3>利用ログ</h3>
+            <button id="refreshLogs" class="ghost-btn">更新</button>
+          </div>
+          <ul id="logList" class="list"></ul>
+        </div>
+      </div>
+
+      <!-- 承認 -->
+      <div id="tab-approvals" class="tab-panel hidden">
+        <div class="card">
+          <div class="card-head">
+            <h3>保留中の承認リクエスト</h3>
+            <button id="refreshApprovals" class="ghost-btn">更新</button>
+          </div>
+          <ul id="approvalList" class="list"></ul>
+        </div>
+      </div>
+    </section>
+
+    <footer class="foot">PC Login Control · Supabase + Vercel</footer>
+  </main>
+
+  <script src="sha256.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
