@@ -4,7 +4,7 @@
 //   ・users テーブル照合（org_id + user_id でスコープ）
 // =====================================================
 
-import { supabase } from './supabase';
+import { getSupabase } from './supabase';
 
 export interface OrgRow {
   org_id: string;
@@ -25,7 +25,7 @@ export interface AuthResult {
 export async function getOrg(orgId: string | undefined): Promise<OrgRow | null> {
   const id = (orgId ?? '').trim();
   if (!id) return null;
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('organizations')
     .select('org_id, name, master_pass_hash')
     .eq('org_id', id)
@@ -51,7 +51,7 @@ export async function authenticateUser(
     return { ok: true, orgId: org.org_id, orgName: org.name, userId: 'MASTER', userName: 'マスター' };
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('users')
     .select('user_id, user_name, hashed_password')
     .eq('org_id', org.org_id)
@@ -68,7 +68,7 @@ export async function authenticateUser(
 /** 組織内の userId から表示名を取得（存在しなければ null） */
 export async function lookupUserName(orgId: string, userId: string): Promise<string | null> {
   if (userId === 'MASTER') return 'マスター';
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('users')
     .select('user_name')
     .eq('org_id', orgId)

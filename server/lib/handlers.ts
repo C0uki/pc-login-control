@@ -4,7 +4,7 @@
 //   レスポンス形状はクライアント互換のため従来どおり。
 // =====================================================
 
-import { supabase } from './supabase';
+import { getSupabase } from './supabase';
 import { authenticateUser, lookupUserName } from './auth';
 import type { ApiResult, RequestData, ApprovalStatus } from './types';
 
@@ -46,7 +46,7 @@ async function handleCreateOrg(data: RequestData): Promise<ApiResult> {
   if (!name) return fail('組織名が必要です');
   if (!masterHash) return fail('マスターパスワードが必要です');
 
-  const { data: org, error } = await supabase
+  const { data: org, error } = await getSupabase()
     .from('organizations')
     .insert({ name, master_pass_hash: masterHash })
     .select('org_id, name')
@@ -91,7 +91,7 @@ async function handleRequestApproval(data: RequestData): Promise<ApiResult> {
   const userName = await lookupUserName(orgId, userId);
   if (userName === null) return fail('登録されていないユーザーIDです');
 
-  const { data: inserted, error } = await supabase
+  const { data: inserted, error } = await getSupabase()
     .from('approval_requests')
     .insert({ org_id: orgId, user_id: userId, user_name: userName, device_name: deviceName, status: 'pending' })
     .select('request_id')
@@ -111,7 +111,7 @@ async function handleCheckApproval(data: RequestData): Promise<ApiResult> {
   if (!orgId) return fail('組織IDが必要です');
   if (!requestId) return fail('requestId が必要です');
 
-  const { data: row, error } = await supabase
+  const { data: row, error } = await getSupabase()
     .from('approval_requests')
     .select('*')
     .eq('org_id', orgId)
@@ -132,7 +132,7 @@ async function handleListRequests(data: RequestData): Promise<ApiResult> {
   if (!auth.ok) return fail(auth.message ?? '認証に失敗しました');
 
   const cutoff = new Date(Date.now() - APPROVAL_TTL_SEC * 1000).toISOString();
-  let query = supabase
+  let query = getSupabase()
     .from('approval_requests')
     .select('*')
     .eq('org_id', auth.orgId as string)
@@ -166,7 +166,7 @@ async function handleRespondRequest(data: RequestData): Promise<ApiResult> {
     return fail('decision は approve か deny を指定してください');
   }
 
-  const { data: row, error } = await supabase
+  const { data: row, error } = await getSupabase()
     .from('approval_requests')
     .select('*')
     .eq('org_id', auth.orgId as string)
@@ -184,7 +184,7 @@ async function handleRespondRequest(data: RequestData): Promise<ApiResult> {
   }
 
   const newStatus = decision === 'approve' ? 'approved' : 'denied';
-  const { error: updErr } = await supabase
+  const { error: updErr } = await getSupabase()
     .from('approval_requests')
     .update({ status: newStatus, responded_at: new Date().toISOString() })
     .eq('org_id', auth.orgId as string)
@@ -204,7 +204,7 @@ async function handleGetLogs(data: RequestData): Promise<ApiResult> {
   if (!auth.ok) return fail(auth.message ?? '認証に失敗しました');
 
   const limit = Math.min(Math.max(Number(data.limit) || 50, 1), 200);
-  let query = supabase
+  let query = getSupabase()
     .from('logs')
     .select('created_at, user_id, user_name, action')
     .eq('org_id', auth.orgId as string)
@@ -236,7 +236,7 @@ async function handleRegister(data: RequestData): Promise<ApiResult> {
   if (!newUserId || !newPasswordHash) return fail('ユーザーIDとパスワードが必要です');
   if (newUserId === 'MASTER') return fail('MASTER は予約済みIDです');
 
-  const { error } = await supabase
+  const { error } = await getSupabase()
     .from('users')
     .upsert(
       { org_id: auth.orgId, user_id: newUserId, user_name: newUserName, hashed_password: newPasswordHash },
@@ -250,7 +250,7 @@ async function handleListUsers(data: RequestData): Promise<ApiResult> {
   const auth = await authenticateUser(data.orgId, data.userId, data.passwordHash);
   if (!auth.ok || auth.userId !== 'MASTER') return fail('管理者(マスター)権限が必要です');
 
-  const { data: rows, error } = await supabase
+  const { data: rows, error } = await getSupabase()
     .from('users')
     .select('user_id, user_name, created_at')
     .eq('org_id', auth.orgId as string)
@@ -273,7 +273,7 @@ async function handleDeleteUser(data: RequestData): Promise<ApiResult> {
   if (!target) return fail('対象ユーザーIDが必要です');
   if (target === 'MASTER') return fail('MASTER は削除できません');
 
-  const { error } = await supabase
+  const { error } = await getSupabase()
     .from('users')
     .delete()
     .eq('org_id', auth.orgId as string)
@@ -292,7 +292,7 @@ async function handleHealth(): Promise<ApiResult> {
 
   if (envConfigured) {
     try {
-      const { error } = await supabase
+      const { error } = await getSupabase()
         .from('organizations')
         .select('org_id', { head: true, count: 'exact' });
       if (error) dbError = error.message;
@@ -307,7 +307,7 @@ async function handleHealth(): Promise<ApiResult> {
 // ---------- helpers ----------
 
 async function recordLog(orgId: string, userId: string, userName: string, action: string): Promise<void> {
-  await supabase.from('logs').insert({ org_id: orgId, user_id: userId, user_name: userName ?? '', action });
+  await getSupabase().from('logs').insert({ org_id: orgId, user_id: userId, user_name: userName ?? '', action });
 }
 
 function ok(message: string, extra?: Record<string, unknown>): ApiResult {
