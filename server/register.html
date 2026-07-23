@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ユーザー登録 — PC Login Control</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="container" style="max-width:480px">
+    <div class="card" style="margin-top:40px">
+      <h2 id="orgTitle">ユーザー登録</h2>
+      <p class="hint" id="orgHint">この組織にあなたのアカウントを登録します。</p>
+
+      <div id="msg" class="msg hidden"></div>
+
+      <div id="form">
+        <div class="form-grid" style="grid-template-columns:1fr">
+          <div>
+            <label class="hint" for="code">登録コード（管理者から共有）</label>
+            <input id="code" type="text" placeholder="登録コード" spellcheck="false" style="width:100%" />
+          </div>
+          <div>
+            <label class="hint" for="userId">ユーザーID</label>
+            <input id="userId" type="text" placeholder="半角英数の希望ID" spellcheck="false" style="width:100%" />
+          </div>
+          <div>
+            <label class="hint" for="userName">お名前</label>
+            <input id="userName" type="text" placeholder="表示名" style="width:100%" />
+          </div>
+          <div>
+            <label class="hint" for="pw">パスワード</label>
+            <input id="pw" type="password" placeholder="パスワード" autocomplete="new-password" style="width:100%" />
+          </div>
+          <div>
+            <label class="hint" for="pw2">パスワード（確認）</label>
+            <input id="pw2" type="password" placeholder="もう一度入力" autocomplete="new-password" style="width:100%" />
+          </div>
+          <button id="submitBtn" class="primary-btn">登録する</button>
+        </div>
+      </div>
+
+      <div id="done" class="hidden" style="text-align:center;padding:12px 0">
+        <p style="font-size:1.1rem;font-weight:700;color:var(--ok)">✅ 登録が完了しました</p>
+        <p class="hint">このIDとパスワードで PC・スマホアプリにログインできます。</p>
+      </div>
+    </div>
+    <footer class="foot">PC Login Control</footer>
+  </main>
+
+  <script src="console/sha256.js"></script>
+  <script src="console/register.js"></script>
+</body>
+</html>

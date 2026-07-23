@@ -13,7 +13,7 @@ interface HealthResult extends BaseResult {
   envConfigured?: boolean; tablesReady?: boolean; signupCodeRequired?: boolean; dbError?: string;
 }
 interface CreateOrgResult extends BaseResult { orgId?: string; orgName?: string; }
-interface LoginResult extends BaseResult { orgId?: string; orgName?: string; userId?: string; userName?: string; }
+interface LoginResult extends BaseResult { orgId?: string; orgName?: string; userId?: string; userName?: string; registrationCode?: string; }
 interface UserRow { userId: string; userName: string; createdAt: string; }
 interface ListUsersResult extends BaseResult { users?: UserRow[]; }
 interface LogRow { timestamp: string; userId: string; userName: string; action: string; }
@@ -28,11 +28,13 @@ type TabName = 'users' | 'logs' | 'approvals';
 const SCHEMA_SQL: string = [
   '-- PC Login Control — Supabase スキーマ（マルチテナント）',
   'create table if not exists public.organizations (',
-  '  org_id           uuid primary key default gen_random_uuid(),',
-  '  name             text not null,',
-  '  master_pass_hash text not null,',
-  '  created_at       timestamptz not null default now()',
+  '  org_id            uuid primary key default gen_random_uuid(),',
+  '  name              text not null,',
+  '  master_pass_hash  text not null,',
+  '  registration_code text,',
+  '  created_at        timestamptz not null default now()',
   ');',
+  'alter table public.organizations add column if not exists registration_code text;',
   '',
   'create table if not exists public.users (',
   '  org_id          uuid not null references public.organizations(org_id) on delete cascade,',
@@ -75,6 +77,7 @@ const SCHEMA_SQL: string = [
 
 // ---------- 状態 ----------
 let session: Session | null = null;
+let orgFormCode = ''; // 組織の登録フォームの合言葉（マスターログイン時に取得）
 
 // ---------- DOM ヘルパー ----------
 function $<T extends HTMLElement = HTMLElement>(id: string): T {
@@ -188,6 +191,7 @@ async function doLogin(): Promise<void> {
     const r = await api<LoginResult>({ action: 'login', orgId, userId: 'MASTER', passwordHash: hash });
     if (r.success && r.userId === 'MASTER') {
       session = { orgId: r.orgId || orgId, orgName: r.orgName || '', passwordHash: hash };
+      orgFormCode = r.registrationCode || '';
       inp('loginMasterPw').value = '';
       applyLoggedIn();
     } else if (r.success) {
@@ -218,7 +222,35 @@ function applyLoggedIn(): void {
   const badge = $('sessionBadge');
   badge.textContent = (session.orgName || '組織') + ' · マスター';
   badge.classList.remove('hidden');
+  // 登録フォーム
+  const origin = location.origin && location.origin !== 'null' ? location.origin : '';
+  $('formUrl').textContent = origin + '/register.html?org=' + session.orgId;
+  inp('regCode').value = orgFormCode;
+  updateRegStatus();
   switchTab('users');
+}
+
+function updateRegStatus(): void {
+  $('regStatus').textContent = orgFormCode
+    ? '✅ 登録フォームは有効です。上のURLと登録コードを利用者に共有してください。'
+    : '⚠️ 登録コードが未設定のため、フォームは無効です（利用者は登録できません）。';
+}
+
+async function saveRegCode(): Promise<void> {
+  const code = inp('regCode').value.trim();
+  const msg = $('regMsg');
+  try {
+    const r = await authCall<BaseResult>('setRegistrationCode', { registrationCode: code });
+    if (r.success) {
+      orgFormCode = code;
+      updateRegStatus();
+      showMsg(msg, code ? '登録コードを設定しました。' : 'フォームを無効にしました。', 'ok');
+    } else {
+      showMsg(msg, r.message || '保存に失敗しました。', 'error');
+    }
+  } catch (e) {
+    showMsg(msg, '通信エラー: ' + errMsg(e), 'error');
+  }
 }
 
 // ---------- ユーザー ----------
@@ -384,6 +416,9 @@ function init(): void {
   $('refreshUsers').addEventListener('click', loadUsers);
   $('refreshLogs').addEventListener('click', loadLogs);
   $('refreshApprovals').addEventListener('click', loadApprovals);
+  $('saveRegCode').addEventListener('click', saveRegCode);
+  const copyFormBtn = $('copyFormUrl');
+  copyFormBtn.addEventListener('click', () => copyText($('formUrl').textContent || '', copyFormBtn));
   document.querySelectorAll('.tab').forEach((b) => {
     b.addEventListener('click', () => switchTab(b.getAttribute('data-tab') as TabName));
   });

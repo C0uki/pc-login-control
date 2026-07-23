@@ -7,7 +7,7 @@ SaaS 型バックエンドです。データは `org_id` でテナント分離�
 RN アプリ / 管理コンソール ──POST /api {orgId,…}──▶ Vercel ──service_role──▶ Supabase (org_id で分離)
 ```
 
-- アクション: `createOrg` / `login` / `logout` / `requestApproval` / `checkApproval` / `listRequests` / `respondRequest` / `getLogs` / `register` / `listUsers` / `deleteUser` / `health`
+- アクション: `createOrg` / `login` / `logout` / `requestApproval` / `checkApproval` / `listRequests` / `respondRequest` / `getLogs` / `register` / `listUsers` / `deleteUser` / `setRegistrationCode` / `selfRegister` / `health`
 - デプロイURLの**ルート（`/`）に Web 管理コンソール**（組織作成・ログイン・管理）
 - **API・管理コンソールとも TypeScript**（コンソールは `console/*.ts` → `console/*.js` に `tsc` でビルド）
 - マスターパスワードは**組織ごと**に保持（環境変数 `MASTER_PASS_HASH` は廃止）
@@ -125,8 +125,15 @@ export const ORG_ID  = 'あなたの組織ID';                      // 導入者
 
 ## ユーザー登録
 
-**管理コンソールの「ユーザー」タブ**から登録するのが基本です（ブラウザ操作）。
-API を直接使う場合は、組織ID・組織マスターの資格情報を添えて `register` を呼びます。
+登録方法は2つあります。
+
+1. **管理者が登録**（コンソール「ユーザー」タブ）… ID・名前・初期パスワードを入力（`register`）
+2. **利用者が自分で登録**（組織ごとの登録フォーム）
+   - コンソール「ユーザー」タブの「登録フォーム」で**登録コード（合言葉）**を設定
+   - 表示される **`/register.html?org=<組織ID>`** と登録コードを利用者に共有
+   - 利用者はコード＋自分の情報を入力して登録（`selfRegister`）。コード未設定ならフォームは無効
+
+API を直接使う場合（管理者登録）は、組織ID・組織マスターの資格情報を添えて `register` を呼びます。
 
 ```bash
 curl -X POST https://<owner-app>.vercel.app/api -H 'Content-Type: application/json' -d '{

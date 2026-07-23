@@ -10,6 +10,7 @@ export interface OrgRow {
   org_id: string;
   name: string;
   master_pass_hash: string;
+  registration_code: string | null;
 }
 
 export interface AuthResult {
@@ -18,6 +19,7 @@ export interface AuthResult {
   orgName?: string;
   userId?: string;
   userName?: string;
+  registrationCode?: string | null;
   message?: string;
 }
 
@@ -27,7 +29,7 @@ export async function getOrg(orgId: string | undefined): Promise<OrgRow | null> 
   if (!id) return null;
   const { data, error } = await getSupabase()
     .from('organizations')
-    .select('org_id, name, master_pass_hash')
+    .select('org_id, name, master_pass_hash, registration_code')
     .eq('org_id', id)
     .maybeSingle();
   if (error) throw error;
@@ -48,7 +50,10 @@ export async function authenticateUser(
 
   // 組織マスターパスワード
   if (passwordHash === org.master_pass_hash) {
-    return { ok: true, orgId: org.org_id, orgName: org.name, userId: 'MASTER', userName: 'マスター' };
+    return {
+      ok: true, orgId: org.org_id, orgName: org.name,
+      userId: 'MASTER', userName: 'マスター', registrationCode: org.registration_code,
+    };
   }
 
   const { data, error } = await getSupabase()

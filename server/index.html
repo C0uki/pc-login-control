@@ -99,6 +99,23 @@
             <button id="addUser" class="primary-btn">登録 / 更新</button>
           </div>
         </div>
+
+        <div class="card">
+          <h3>登録フォーム（利用者に共有）</h3>
+          <p class="hint">合言葉（登録コード）を設定すると、下のURLを開いた利用者が
+            自分でアカウント登録できます。空にするとフォームは無効になります。</p>
+          <div id="regMsg" class="msg hidden"></div>
+          <div class="row">
+            <input id="regCode" type="text" placeholder="登録コード（合言葉）" spellcheck="false" />
+            <button id="saveRegCode" class="primary-btn">保存</button>
+          </div>
+          <p class="hint" id="regStatus" style="margin-top:10px"></p>
+          <div class="hash-out" style="margin-top:6px">
+            <code id="formUrl"></code>
+            <button id="copyFormUrl" class="ghost-btn">コピー</button>
+          </div>
+        </div>
+
         <div class="card">
           <div class="card-head">
             <h3>登録ユーザー</h3>
