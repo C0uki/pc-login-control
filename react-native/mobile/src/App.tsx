@@ -25,7 +25,7 @@ function Root() {
 export default function App() {
   return (
     <AuthProvider>
-      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
       <Root />
     </AuthProvider>
   );
