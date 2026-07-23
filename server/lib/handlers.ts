@@ -5,7 +5,7 @@
 // =====================================================
 
 import { getSupabase } from './supabase';
-import { authenticateUser, lookupUserName } from './auth';
+import { authenticateUser, lookupUserName, getOrg } from './auth';
 import type { ApiResult, RequestData, ApprovalStatus } from './types';
 
 const APPROVAL_TTL_SEC = 120;
@@ -28,6 +28,9 @@ export async function handle(data: RequestData): Promise<ApiResult> {
     case 'register':        return handleRegister(data);
     case 'listUsers':       return handleListUsers(data);
     case 'deleteUser':      return handleDeleteUser(data);
+    case 'setRegistrationCode': return handleSetRegistrationCode(data);
+    // --- 組織ごとの登録フォーム（自己登録・認証不要） ---
+    case 'selfRegister':    return handleSelfRegister(data);
     default:                return fail('不正なアクションです');
   }
 }
@@ -63,12 +66,15 @@ async function handleLogin(data: RequestData): Promise<ApiResult> {
   if (!auth.ok) return fail(auth.message ?? '認証に失敗しました');
 
   await recordLog(auth.orgId!, auth.userId!, auth.userName ?? '', 'login');
-  return ok(auth.userId === 'MASTER' ? 'マスターで認証しました' : 'ログイン成功', {
+  const extra: Record<string, unknown> = {
     orgId: auth.orgId,
     orgName: auth.orgName,
     userId: auth.userId,
     userName: auth.userName,
-  });
+  };
+  // マスターには登録フォームの合言葉の現状も返す（コンソール表示用）
+  if (auth.userId === 'MASTER') extra.registrationCode = auth.registrationCode ?? '';
+  return ok(auth.userId === 'MASTER' ? 'マスターで認証しました' : 'ログイン成功', extra);
 }
 
 async function handleLogout(data: RequestData): Promise<ApiResult> {
@@ -280,6 +286,56 @@ async function handleDeleteUser(data: RequestData): Promise<ApiResult> {
     .eq('user_id', target);
   if (error) throw error;
   return ok('ユーザーを削除しました', { userId: target });
+}
+
+/** 登録フォームの合言葉を設定/解除（マスター権限） */
+async function handleSetRegistrationCode(data: RequestData): Promise<ApiResult> {
+  const auth = await authenticateUser(data.orgId, data.userId, data.passwordHash);
+  if (!auth.ok || auth.userId !== 'MASTER') return fail('管理者(マスター)権限が必要です');
+
+  const code = (data.registrationCode ?? '').trim();
+  const { error } = await getSupabase()
+    .from('organizations')
+    .update({ registration_code: code || null })
+    .eq('org_id', auth.orgId as string);
+  if (error) throw error;
+  return ok(code ? '登録コードを設定しました' : '登録フォームを無効にしました', { registrationCode: code });
+}
+
+// ---------- 組織ごとの登録フォーム（自己登録・認証不要） ----------
+
+async function handleSelfRegister(data: RequestData): Promise<ApiResult> {
+  const orgId = (data.orgId ?? '').trim();
+  if (!orgId) return fail('組織IDが必要です');
+
+  const org = await getOrg(orgId);
+  if (!org) return fail('組織が見つかりません');
+
+  const code = (org.registration_code ?? '').trim();
+  if (!code) return fail('この組織はフォーム登録が無効です。管理者にご連絡ください。');
+  if ((data.registrationCode ?? '').trim() !== code) return fail('登録コードが正しくありません。');
+
+  const userId = (data.userId ?? '').trim();
+  const userName = (data.userName ?? '').trim();
+  const passwordHash = (data.passwordHash ?? '').trim();
+  if (!userId || !passwordHash) return fail('ユーザーIDとパスワードは必須です。');
+  if (userId === 'MASTER') return fail('このユーザーIDは使用できません。');
+
+  // 既存IDは上書きさせない（他人のパスワードを変えられないように）
+  const { data: existing, error: exErr } = await getSupabase()
+    .from('users')
+    .select('user_id')
+    .eq('org_id', orgId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (exErr) throw exErr;
+  if (existing) return fail('そのユーザーIDは既に登録されています。管理者にご連絡ください。');
+
+  const { error } = await getSupabase()
+    .from('users')
+    .insert({ org_id: orgId, user_id: userId, user_name: userName, hashed_password: passwordHash });
+  if (error) throw error;
+  return ok('登録が完了しました。', { userId });
 }
 
 // ---------- ヘルス（導入状態・認証不要） ----------

@@ -11,11 +11,13 @@
 const SCHEMA_SQL = [
     '-- PC Login Control — Supabase スキーマ（マルチテナント）',
     'create table if not exists public.organizations (',
-    '  org_id           uuid primary key default gen_random_uuid(),',
-    '  name             text not null,',
-    '  master_pass_hash text not null,',
-    '  created_at       timestamptz not null default now()',
+    '  org_id            uuid primary key default gen_random_uuid(),',
+    '  name              text not null,',
+    '  master_pass_hash  text not null,',
+    '  registration_code text,',
+    '  created_at        timestamptz not null default now()',
     ');',
+    'alter table public.organizations add column if not exists registration_code text;',
     '',
     'create table if not exists public.users (',
     '  org_id          uuid not null references public.organizations(org_id) on delete cascade,',
@@ -57,6 +59,7 @@ const SCHEMA_SQL = [
 ].join('\n');
 // ---------- 状態 ----------
 let session = null;
+let orgFormCode = ''; // 組織の登録フォームの合言葉（マスターログイン時に取得）
 // ---------- DOM ヘルパー ----------
 function $(id) {
     return document.getElementById(id);
@@ -189,6 +192,7 @@ async function doLogin() {
         const r = await api({ action: 'login', orgId, userId: 'MASTER', passwordHash: hash });
         if (r.success && r.userId === 'MASTER') {
             session = { orgId: r.orgId || orgId, orgName: r.orgName || '', passwordHash: hash };
+            orgFormCode = r.registrationCode || '';
             inp('loginMasterPw').value = '';
             applyLoggedIn();
         }
@@ -224,7 +228,35 @@ function applyLoggedIn() {
     const badge = $('sessionBadge');
     badge.textContent = (session.orgName || '組織') + ' · マスター';
     badge.classList.remove('hidden');
+    // 登録フォーム
+    const origin = location.origin && location.origin !== 'null' ? location.origin : '';
+    $('formUrl').textContent = origin + '/register.html?org=' + session.orgId;
+    inp('regCode').value = orgFormCode;
+    updateRegStatus();
     switchTab('users');
+}
+function updateRegStatus() {
+    $('regStatus').textContent = orgFormCode
+        ? '✅ 登録フォームは有効です。上のURLと登録コードを利用者に共有してください。'
+        : '⚠️ 登録コードが未設定のため、フォームは無効です（利用者は登録できません）。';
+}
+async function saveRegCode() {
+    const code = inp('regCode').value.trim();
+    const msg = $('regMsg');
+    try {
+        const r = await authCall('setRegistrationCode', { registrationCode: code });
+        if (r.success) {
+            orgFormCode = code;
+            updateRegStatus();
+            showMsg(msg, code ? '登録コードを設定しました。' : 'フォームを無効にしました。', 'ok');
+        }
+        else {
+            showMsg(msg, r.message || '保存に失敗しました。', 'error');
+        }
+    }
+    catch (e) {
+        showMsg(msg, '通信エラー: ' + errMsg(e), 'error');
+    }
 }
 // ---------- ユーザー ----------
 async function loadUsers() {
@@ -444,6 +476,9 @@ function init() {
     $('refreshUsers').addEventListener('click', loadUsers);
     $('refreshLogs').addEventListener('click', loadLogs);
     $('refreshApprovals').addEventListener('click', loadApprovals);
+    $('saveRegCode').addEventListener('click', saveRegCode);
+    const copyFormBtn = $('copyFormUrl');
+    copyFormBtn.addEventListener('click', () => copyText($('formUrl').textContent || '', copyFormBtn));
     document.querySelectorAll('.tab').forEach((b) => {
         b.addEventListener('click', () => switchTab(b.getAttribute('data-tab')));
     });

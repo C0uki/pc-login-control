@@ -11,11 +11,14 @@
 
 -- ---------- 組織（テナント） ----------
 create table if not exists public.organizations (
-  org_id           uuid primary key default gen_random_uuid(),
-  name             text not null,
-  master_pass_hash text not null,                 -- 組織管理者(マスター)PWの SHA-256
-  created_at       timestamptz not null default now()
+  org_id            uuid primary key default gen_random_uuid(),
+  name              text not null,
+  master_pass_hash  text not null,                 -- 組織管理者(マスター)PWの SHA-256
+  registration_code text,                          -- 登録フォームの合言葉（null=フォーム無効）
+  created_at        timestamptz not null default now()
 );
+-- 既存DBへの追加（再実行で列を追加）
+alter table public.organizations add column if not exists registration_code text;
 
 -- ---------- ユーザーマスター（組織ごと） ----------
 create table if not exists public.users (

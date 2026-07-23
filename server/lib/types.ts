@@ -33,4 +33,6 @@ export interface RequestData {
   newPasswordHash?: string;
   // deleteUser（マスター権限での削除）
   targetUserId?: string;
+  // selfRegister / setRegistrationCode（組織ごとの登録フォーム）
+  registrationCode?: string;
 }
